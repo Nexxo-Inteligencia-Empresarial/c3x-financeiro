@@ -1,39 +1,47 @@
-export default async function handler(req, res) {
-  // CORS — permite chamadas do próprio domínio Vercel
+const https = require('https');
+
+module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const { token, endpoint } = req.query;
-
+  const { token, endpoint, ...rest } = req.query;
   if (!token || !endpoint) {
-    return res.status(400).json({ error: 'token e endpoint são obrigatórios' });
+    return res.status(400).json({ error: 'token e endpoint obrigatorios' });
   }
 
-  // Monta a URL da API do Nibo
-  // endpoint vem como ex: "accounts", "schedules/credit", etc.
-  // query extras são repassadas
-  const { token: _t, endpoint: _e, ...rest } = req.query;
   const params = new URLSearchParams({ apitoken: token, ...rest });
-  const niboUrl = `https://api.nibo.com.br/empresas/v1/${endpoint}?${params.toString()}`;
+  const path = `/empresas/v1/${endpoint}?${params.toString()}`;
 
-  try {
-    const response = await fetch(niboUrl, {
+  return new Promise((resolve) => {
+    const options = {
+      hostname: 'api.nibo.com.br',
+      path: path,
+      method: 'GET',
       headers: { 'Content-Type': 'application/json' }
+    };
+
+    const request = https.request(options, (response) => {
+      let data = '';
+      response.on('data', (chunk) => { data += chunk; });
+      response.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          res.status(response.statusCode).json(parsed);
+        } catch (e) {
+          res.status(500).json({ error: 'Resposta invalida do Nibo', raw: data.substring(0, 200) });
+        }
+        resolve();
+      });
     });
 
-    const data = await response.json();
+    request.on('error', (err) => {
+      res.status(500).json({ error: 'Erro de conexao', detail: err.message });
+      resolve();
+    });
 
-    if (!response.ok) {
-      return res.status(response.status).json(data);
-    }
-
-    return res.status(200).json(data);
-  } catch (err) {
-    return res.status(500).json({ error: 'Erro ao conectar com o Nibo', detail: err.message });
-  }
-}
+    request.end();
+  });
+};
