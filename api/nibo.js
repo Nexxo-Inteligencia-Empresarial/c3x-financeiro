@@ -1,5 +1,3 @@
-const fetch = require('node-fetch');
-
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -11,7 +9,6 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: 'token e endpoint obrigatorios' });
   }
 
-  // Preserva todos os parametros originais da query string
   const rawQuery = req.url.split('?')[1] || '';
   const params = new URLSearchParams(rawQuery);
   params.delete('token');
@@ -22,14 +19,16 @@ module.exports = async function handler(req, res) {
 
   try {
     const response = await fetch(niboUrl, {
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-      }
+      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }
     });
-    const data = await response.json();
-    return res.status(response.status).json(data);
+    const text = await response.text();
+    try {
+      const data = JSON.parse(text);
+      return res.status(response.status).json(data);
+    } catch(e) {
+      return res.status(500).json({ error: 'Parse error', body: text.substring(0, 300), niboStatus: response.status });
+    }
   } catch (err) {
-    return res.status(500).json({ error: err.message, stack: err.stack });
+    return res.status(500).json({ error: err.message });
   }
 };
