@@ -275,6 +275,24 @@ tr:hover td { background: #f9fafb; }
         <button class="chip" onclick="setPeriod('q4',this)">Q4</button>
         <button class="chip" onclick="setPeriod('ano',this)">Ano</button>
       </div>
+      <div style="display:flex;align-items:center;gap:6px;margin-left:8px;padding-left:12px;border-left:1px solid var(--border)">
+        <span class="period-label">Mês:</span>
+        <select class="month-select" id="topbar-mes" onchange="setMes(this.value)" style="padding:4px 10px;font-size:12px">
+          <option value="-1">Todos</option>
+          <option value="0">Janeiro</option>
+          <option value="1">Fevereiro</option>
+          <option value="2">Março</option>
+          <option value="3">Abril</option>
+          <option value="4">Maio</option>
+          <option value="5">Junho</option>
+          <option value="6">Julho</option>
+          <option value="7">Agosto</option>
+          <option value="8">Setembro</option>
+          <option value="9">Outubro</option>
+          <option value="10">Novembro</option>
+          <option value="11">Dezembro</option>
+        </select>
+      </div>
     </div>
     <div class="topbar-right">
       <span class="topbar-updated" id="topbar-updated">—</span>
@@ -403,14 +421,7 @@ tr:hover td { background: #f9fafb; }
       <p class="page-sub">Comparativo: projetado, realizado, diferença e atingimento.</p>
     </div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:1.25rem">
-      <span style="font-size:13px;color:var(--text2);font-weight:500">Mês:</span>
-      <select class="month-select" id="mes-select" onchange="renderMensal()">
-        <option value="0">Janeiro</option>
-        <option value="1">Fevereiro</option>
-        <option value="2">Março</option>
-        <option value="3">Abril</option>
-        <option value="4">Maio</option>
-      </select>
+      <span style="font-size:13px;color:var(--text2);font-weight:500">Selecione o mês no menu acima para filtrar esta página.</span>
     </div>
     <div class="kpi-grid kpi-grid-3" id="mensal-kpis"></div>
     <div class="table-card">
@@ -554,6 +565,7 @@ let REAL = {
 
 // Período selecionado
 let PERIODO = 'ytd';
+let MES_FILTRO = -1; // -1 = sem filtro de mês específico
 let TOKEN = '';
 const charts = {};
 
@@ -566,7 +578,8 @@ const fmtPct = v => (v*100).toFixed(1)+'%';
 const gc = { grid:'rgba(0,0,0,0.05)', text:'#9ca3af' };
 
 function periodoMeses() {
-  const ano = new Date().getFullYear();
+  // Se mês específico selecionado, retorna só aquele mês
+  if (MES_FILTRO >= 0) return [MES_FILTRO, MES_FILTRO];
   const mesAtual = new Date().getMonth(); // 0-based
   if (PERIODO==='ytd') return [0, mesAtual];
   if (PERIODO==='q1') return [0,2];
@@ -809,7 +822,8 @@ function renderCategorias() {
 }
 
 function renderMensal() {
-  const mes = parseInt(document.getElementById('mes-select').value);
+  const [from2, to2] = periodoMeses();
+  const mes = MES_FILTRO >= 0 ? MES_FILTRO : (to2 <= 4 ? to2 : 4);
   const m = MESES_FULL[mes];
   const recR=REAL.receita[mes], recP=PROJ.receita[mes];
   const despR=REAL.despesa[mes], despP=PROJ.despesa[mes];
@@ -971,8 +985,19 @@ function goPage(id, el) {
 
 function setPeriod(p, el) {
   PERIODO = p;
+  MES_FILTRO = -1;
+  document.getElementById('topbar-mes').value = '-1';
   document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
   el.classList.add('active');
+  renderTudo();
+}
+
+function setMes(val) {
+  MES_FILTRO = parseInt(val);
+  // Desativar chips de período quando mês específico selecionado
+  if (MES_FILTRO >= 0) {
+    document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+  }
   renderTudo();
 }
 
