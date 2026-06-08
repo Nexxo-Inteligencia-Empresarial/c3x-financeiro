@@ -950,6 +950,7 @@ function renderProjecoes() {
 ═══════════════════════════════════════════ */
 let CC_DATA = {}; // { nomCC: { desp: Array(12), lancamentos: [] } }
 let CC_RECEITA = {}; // { nomeCC: Array(12) } — receitas por CC via categories
+let CC_INADIM  = {}; // { nomeCC: { total: 0, porMes: Array(12) } } — inadimplência por CC
 
 async function carregarCentrosCusto() {
   // Buscar todos os débitos de 2026 com centro de custo
@@ -975,16 +976,29 @@ async function carregarCentrosCusto() {
     }
   }
 
-  // Receitas por CC (via costCenters nos créditos)
+  // Receitas e inadimplência por CC
+  const hoje = new Date();
+  CC_INADIM = {};
   for (const item of (creditData.items||[])) {
     const ccs = item.costCenters || [];
     if (ccs.length === 0) continue;
-    const mes = new Date(item.dueDate).getMonth();
+    const dueDate = new Date(item.dueDate);
+    const mes = dueDate.getMonth();
+    const anoItem = dueDate.getFullYear();
+    if (anoItem !== 2026) continue;
     const v = Math.abs(item.value||0);
+    const openV = Math.abs(item.openValue||0);
     for (const cc of ccs) {
       const nome = cc.costCenterDescription || cc.description || cc.name || 'Outros';
+      // Receita
       if (!CC_RECEITA[nome]) CC_RECEITA[nome] = Array(12).fill(0);
       CC_RECEITA[nome][mes] += v;
+      // Inadimplência: isPaid=false + dueDate no passado
+      if (!item.isPaid && dueDate < hoje && openV > 0) {
+        if (!CC_INADIM[nome]) CC_INADIM[nome] = { total: 0, porMes: Array(12).fill(0) };
+        CC_INADIM[nome].total += openV;
+        CC_INADIM[nome].porMes[mes] += openV;
+      }
     }
   }
 }
@@ -998,7 +1012,7 @@ const KPI_TIPOS = [
   { id:'unidades',   label:'Unidades / Clientes ativos', icon:'👥', desc:'Alunos, clientes ativos, participantes', tipo:'manual', unit:'un' },
   { id:'novos',      label:'Novos no mês',               icon:'➕', desc:'Novas aquisições no período', tipo:'manual', unit:'un' },
   { id:'churn',      label:'Churn (cancelamentos)',      icon:'📉', desc:'Clientes que cancelaram no mês', tipo:'manual', unit:'un' },
-  { id:'inadim',     label:'Inadimplência (R$)',         icon:'⚠️', desc:'Valor em aberto / inadimplente', tipo:'manual', unit:'R$' },
+  { id:'inadim',     label:'Inadimplência (R$)',         icon:'⚠️', desc:'Calculado automaticamente pelo Nibo (isPaid=false + vencido)', tipo:'auto_nibo', unit:'R$' },
   { id:'conversao',  label:'Taxa de Conversão %',       icon:'🔄', desc:'% de leads convertidos', tipo:'manual', unit:'%' },
   { id:'meta_rec',   label:'Meta de Receita (R$)',      icon:'🎯', desc:'Receita projetada por mês', tipo:'manual', unit:'R$' },
   { id:'mrr',        label:'MRR (R$)',                  icon:'💵', desc:'Receita recorrente mensal', tipo:'manual', unit:'R$' },
@@ -1076,7 +1090,7 @@ function renderConfig() {
     const kpisSel = config.ccKpis[cc] || [];
     const dados = config.ccDados[cc] || {};
     
-    const manuais = KPI_TIPOS.filter(k=>k.tipo==='manual');
+    const manuais = KPI_TIPOS.filter(k=>k.tipo==='manual'); // inadim vem do Nibo automaticamente
     const calcs   = KPI_TIPOS.filter(k=>k.tipo==='calc');
 
     const kpiChecks = manuais.map(k=>`
@@ -1188,6 +1202,7 @@ function renderServicos() {
         <span style="font-size:12px;color:var(--text2)">Resultado</span>
         <span class="badge ${res>=0?'badge-green':'badge-red'}">${fmtK(res)}</span>
       </div>
+      ${CC_INADIM[cc]&&CC_INADIM[cc].total>0?`<div class="service-row"><span style="font-size:12px;color:var(--text2)">Inadimplência</span><span style="font-size:12px;font-weight:600;color:var(--red)">⚠️ ${fmtK(sumRange(CC_INADIM[cc].porMes,from,to))}</span></div>`:''}`
     </div>`;
   }).join('');
 }
@@ -1215,7 +1230,9 @@ function abrirCC(cc) {
   const unidades  = getVal('unidades');
   const novos     = getVal('novos');
   const churnVal  = getVal('churn');
-  const inadim    = getVal('inadim');
+  // Inadimplência vem do Nibo automaticamente (isPaid=false + vencido)
+  const ccInadimData = CC_INADIM[cc] || { total: 0, porMes: Array(12).fill(0) };
+  const inadim = sumRange(ccInadimData.porMes, from, to);
   const conversao = getAvg('conversao');
   const meta_rec  = getVal('meta_rec');
   const mrrManual = getVal('mrr');
@@ -1229,7 +1246,7 @@ function abrirCC(cc) {
   const roi        = sel.includes('roi')        && desp > 0     ? (rec - desp) / desp * 100 : null;
   const margemCalc = sel.includes('margem')     && rec > 0      ? (rec - desp) / rec * 100   : null;
   const mrr_churn  = sel.includes('mrr_churn')  && churnVal > 0 && (ticket||mrrManual/meses) > 0 ? churnVal * (ticket || mrrManual/meses) : null;
-  const inadim_pct = sel.includes('inadim_pct') && inadim !== null && rec > 0 ? inadim / rec * 100 : null;
+  const inadim_pct = sel.includes('inadim_pct') && rec > 0 ? inadim / rec * 100 : null;
   const ating_meta = sel.includes('ating_meta') && meta_rec > 0 ? rec / meta_rec * 100 : null;
 
   // Sempre mostrar receita/despesa/resultado do CC
@@ -1241,7 +1258,7 @@ function abrirCC(cc) {
     { label:'Unidades / Clientes',    value:unidades!==null?unidades.toString():'—',   sub:'ativos no período',    cor:'var(--blue)',  show: unidades!==null },
     { label:'Novos no período',       value:novos!==null?novos.toString():'—',         sub:'aquisições',           cor:'var(--blue)',  show: novos!==null },
     { label:'Churn',                  value:churnVal!==null?churnVal.toString():'—',   sub:'cancelamentos',        cor:'var(--red)',   show: churnVal!==null },
-    { label:'Inadimplência',          value:inadim!==null?fmtFull(inadim):'—',         sub:'valor em aberto',      cor:'var(--red)',   show: inadim!==null },
+    { label:'Inadimplência (Nibo)',    value:inadim>0?fmtFull(inadim):'R$ 0,00',        sub:'vencido não pago',     cor:inadim>0?'var(--red)':'var(--green)', show: true },
     { label:'Conversão %',            value:conversao!==null?conversao.toFixed(1)+'%':'—', sub:'taxa média',       cor:'var(--blue)',  show: conversao!==null },
     { label:'Meta de Receita',        value:meta_rec!==null?fmtFull(meta_rec):'—',    sub:'projetado',            cor:'var(--text2)', show: meta_rec!==null },
     { label:'MRR',                    value:mrrManual!==null?fmtK(mrrManual/meses):'—', sub:'recorrente/mês',     cor:'var(--green)', show: mrrManual!==null },
