@@ -992,24 +992,26 @@ async function carregarCentrosCusto() {
 /* ═══════════════════════════════════════════
    CONFIGURAÇÕES — KPIs OPERACIONAIS
 ═══════════════════════════════════════════ */
+// Todos os KPIs são opcionais — usuário escolhe quais ativar por CC
+// Tipo 'calc' = precisa de outros KPIs para ser calculado (dependências declaradas)
 const KPI_TIPOS = [
-  // Manuais — usuário preenche por mês
-  { id:'unidades',    label:'Unidades / Clientes ativos', icon:'👥', desc:'Ex: alunos, clientes ativos, participantes', tipo:'manual' },
-  { id:'novos',       label:'Novos no mês',               icon:'➕', desc:'Novas aquisições no período', tipo:'manual' },
-  { id:'churn',       label:'Churn (cancelamentos)',       icon:'📉', desc:'Clientes que saíram no mês', tipo:'manual' },
-  { id:'inadim',      label:'Inadimplência (R$)',          icon:'⚠️', desc:'Valor em aberto / inadimplente no mês', tipo:'manual' },
-  { id:'conversao',   label:'Taxa de Conversão %',        icon:'🔄', desc:'Ex: % de leads convertidos', tipo:'manual' },
-  { id:'meta_rec',    label:'Meta de Receita',             icon:'🎯', desc:'Receita projetada por mês', tipo:'manual' },
-  // Automáticos — calculados pelo sistema
-  { id:'mrr',         label:'MRR',                        icon:'💵', desc:'Calculado: receita recorrente do mês', tipo:'auto' },
-  { id:'mrr_churn',   label:'MRR Churn (R$)',             icon:'🔻', desc:'Calculado: churn × ticket médio', tipo:'auto' },
-  { id:'arpu',        label:'ARPU',                       icon:'👤', desc:'Calculado: receita / clientes ativos', tipo:'auto' },
-  { id:'ticket',      label:'Ticket Médio',               icon:'🎫', desc:'Calculado: receita / unidades', tipo:'auto' },
-  { id:'cac',         label:'CAC',                        icon:'💰', desc:'Calculado: despesa / novos clientes', tipo:'auto' },
-  { id:'roi',         label:'ROI %',                      icon:'📈', desc:'Calculado: (receita - despesa) / despesa × 100', tipo:'auto' },
-  { id:'margem',      label:'Margem de Contribuição',     icon:'📊', desc:'Calculado: (receita - despesa) / receita', tipo:'auto' },
-  { id:'ltv',         label:'LTV',                        icon:'♾️', desc:'Calculado: ticket × tempo médio retenção', tipo:'auto' },
-  { id:'inadim_pct',  label:'Inadimplência %',            icon:'🚨', desc:'Calculado: inadimplência / receita × 100', tipo:'auto' },
+  { id:'unidades',   label:'Unidades / Clientes ativos', icon:'👥', desc:'Alunos, clientes ativos, participantes', tipo:'manual', unit:'un' },
+  { id:'novos',      label:'Novos no mês',               icon:'➕', desc:'Novas aquisições no período', tipo:'manual', unit:'un' },
+  { id:'churn',      label:'Churn (cancelamentos)',      icon:'📉', desc:'Clientes que cancelaram no mês', tipo:'manual', unit:'un' },
+  { id:'inadim',     label:'Inadimplência (R$)',         icon:'⚠️', desc:'Valor em aberto / inadimplente', tipo:'manual', unit:'R$' },
+  { id:'conversao',  label:'Taxa de Conversão %',       icon:'🔄', desc:'% de leads convertidos', tipo:'manual', unit:'%' },
+  { id:'meta_rec',   label:'Meta de Receita (R$)',      icon:'🎯', desc:'Receita projetada por mês', tipo:'manual', unit:'R$' },
+  { id:'mrr',        label:'MRR (R$)',                  icon:'💵', desc:'Receita recorrente mensal', tipo:'manual', unit:'R$' },
+  { id:'ltv',        label:'LTV (R$)',                  icon:'♾️', desc:'Valor do cliente ao longo do tempo', tipo:'manual', unit:'R$' },
+  // Calculados — dependem de outros KPIs selecionados
+  { id:'arpu',       label:'ARPU',                     icon:'👤', desc:'Receita ÷ Clientes ativos', tipo:'calc', deps:['unidades'], unit:'R$' },
+  { id:'ticket',     label:'Ticket Médio',             icon:'🎫', desc:'Receita ÷ Unidades', tipo:'calc', deps:['unidades'], unit:'R$' },
+  { id:'cac',        label:'CAC',                      icon:'💰', desc:'Despesa ÷ Novos clientes', tipo:'calc', deps:['novos'], unit:'R$' },
+  { id:'roi',        label:'ROI %',                    icon:'📈', desc:'(Receita − Despesa) ÷ Despesa × 100', tipo:'calc', deps:[], unit:'%' },
+  { id:'margem',     label:'Margem de Contribuição %', icon:'📊', desc:'(Receita − Despesa) ÷ Receita × 100', tipo:'calc', deps:[], unit:'%' },
+  { id:'mrr_churn',  label:'MRR Churn (R$)',           icon:'🔻', desc:'Churn × Ticket Médio', tipo:'calc', deps:['churn','unidades'], unit:'R$' },
+  { id:'inadim_pct', label:'Inadimplência %',          icon:'🚨', desc:'Inadimplência ÷ Receita × 100', tipo:'calc', deps:['inadim'], unit:'%' },
+  { id:'ating_meta', label:'Atingimento Meta %',       icon:'🏆', desc:'Receita ÷ Meta × 100', tipo:'calc', deps:['meta_rec'], unit:'%' },
 ];
 
 function safeId(str) {
@@ -1031,6 +1033,7 @@ function salvarConfig() {
     block.querySelectorAll('.kpi-check:checked').forEach(cb => {
       config.ccKpis[cc].push(cb.value);
     });
+    // Garantir que KPIs calculados também sejam salvos
     // Valores mensais
     config.ccDados[cc] = {};
     block.querySelectorAll('.kpi-input-row').forEach(row => {
@@ -1074,7 +1077,7 @@ function renderConfig() {
     const dados = config.ccDados[cc] || {};
     
     const manuais = KPI_TIPOS.filter(k=>k.tipo==='manual');
-    const autos   = KPI_TIPOS.filter(k=>k.tipo==='auto');
+    const calcs   = KPI_TIPOS.filter(k=>k.tipo==='calc');
 
     const kpiChecks = manuais.map(k=>`
       <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;padding:4px 8px;border:1px solid var(--border);border-radius:6px;${kpisSel.includes(k.id)?'background:var(--green-bg);border-color:var(--green)':''}">
@@ -1082,7 +1085,7 @@ function renderConfig() {
         ${k.icon} ${k.label}
       </label>`).join('');
 
-    const inputRows = manuais.filter(k=>kpisSel.includes(k.id)).map(k=>{
+    const inputRows = KPI_TIPOS.filter(k=>k.tipo==='manual' && kpisSel.includes(k.id)).map(k=>{
       const vals = dados[k.id] || Array(12).fill(0);
       return `<div class="kpi-input-row" data-kpi="${k.id}" style="margin-bottom:12px">
         <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">${k.icon} ${k.label}</div>
@@ -1097,21 +1100,33 @@ function renderConfig() {
       </div>`;
     }).join('');
 
-    // KPIs automáticos
-    const calcKpis = autos.map(k=>`
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:#f9fafb;color:var(--text2)">
-        ${k.icon} ${k.label} <span style="font-size:10px;color:var(--green)">(automático)</span>
+    // KPIs calculados — também opcionais
+    const calcKpis = calcs.map(k=>`
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;padding:4px 8px;border:1px solid var(--border);border-radius:6px;${kpisSel.includes(k.id)?'background:#eff6ff;border-color:var(--blue)':''}">
+        <input type="checkbox" class="kpi-check" value="${k.id}" ${kpisSel.includes(k.id)?'checked':''} onchange="toggleKpiCalc(this,'${cc}')">
+        ${k.icon} ${k.label} <span style="font-size:10px;color:var(--blue)">(calculado)</span>
       </label>`).join('');
 
     return `<div class="cc-config-block" data-cc="${cc}" style="border:1px solid var(--border);border-radius:10px;padding:1.25rem;margin-bottom:1rem">
       <div style="font-size:15px;font-weight:700;margin-bottom:12px">📁 ${cc}</div>
-      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">KPIs manuais — selecione os que deseja preencher</div>
+      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">KPIs de entrada — você preenche mensalmente</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">${kpiChecks}</div>
-      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">KPIs automáticos — calculados pelo sistema</div>
+      <div style="font-size:12px;font-weight:600;color:var(--blue);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">KPIs calculados — opcionais, gerados automaticamente</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">${calcKpis}</div>
       <div id="inputs-${safeId(cc)}">${inputRows}</div>
     </div>`;
   }).join('');
+}
+
+function toggleKpiCalc(checkbox, cc) {
+  // KPIs calculados não precisam de inputs — só marca/desmarca
+  if (checkbox.checked) {
+    checkbox.closest('label').style.background = '#eff6ff';
+    checkbox.closest('label').style.borderColor = 'var(--blue)';
+  } else {
+    checkbox.closest('label').style.background = '';
+    checkbox.closest('label').style.borderColor = '';
+  }
 }
 
 function toggleKpiInput(checkbox, cc) {
@@ -1192,41 +1207,54 @@ function abrirCC(cc) {
   const margem = rec > 0 ? (res/rec)*100 : 0;
 
   // KPIs do período
-  // KPIs manuais
-  const unidades  = kpisSel.includes('unidades')  ? sumRange(dados.unidades||Array(12).fill(0), from, to) : null;
-  const novos     = kpisSel.includes('novos')     ? sumRange(dados.novos||Array(12).fill(0), from, to) : null;
-  const churn     = kpisSel.includes('churn')     ? sumRange(dados.churn||Array(12).fill(0), from, to) : null;
-  const inadim    = kpisSel.includes('inadim')    ? sumRange(dados.inadim||Array(12).fill(0), from, to) : null;
-  const conversao = kpisSel.includes('conversao') ? (sumRange(dados.conversao||Array(12).fill(0), from, to) / Math.max(to-from+1,1)) : null;
-
-  // KPIs automáticos
+  // Pegar valores manuais do período
   const meses = to - from + 1;
-  const mrr        = rec > 0 ? rec / meses : null;
-  const ticket     = unidades > 0 ? rec / unidades : null;
-  const arpu       = unidades > 0 ? rec / unidades : null; // igual ticket quando 1 produto
-  const cac        = novos > 0 ? desp / novos : null;
-  const roi        = desp > 0 ? ((rec - desp) / desp * 100) : null;
-  const mrr_churn  = (churn !== null && ticket !== null) ? churn * ticket : null;
-  const inadim_pct = (inadim !== null && rec > 0) ? (inadim / rec * 100) : null;
+  const getVal = (kpiId) => kpisSel.includes(kpiId) ? sumRange(dados[kpiId]||Array(12).fill(0), from, to) : null;
+  const getAvg = (kpiId) => kpisSel.includes(kpiId) ? sumRange(dados[kpiId]||Array(12).fill(0), from, to) / meses : null;
 
-  // Montar KPIs
+  const unidades  = getVal('unidades');
+  const novos     = getVal('novos');
+  const churnVal  = getVal('churn');
+  const inadim    = getVal('inadim');
+  const conversao = getAvg('conversao');
+  const meta_rec  = getVal('meta_rec');
+  const mrrManual = getVal('mrr');
+  const ltvManual = getVal('ltv');
+
+  // KPIs calculados — só mostrar se selecionados E se tiverem dados suficientes
+  const sel = kpisSel;
+  const ticket     = sel.includes('ticket')     && unidades > 0 ? rec / unidades : null;
+  const arpu       = sel.includes('arpu')       && unidades > 0 ? rec / unidades : null;
+  const cac        = sel.includes('cac')        && novos > 0    ? desp / novos   : null;
+  const roi        = sel.includes('roi')        && desp > 0     ? (rec - desp) / desp * 100 : null;
+  const margemCalc = sel.includes('margem')     && rec > 0      ? (rec - desp) / rec * 100   : null;
+  const mrr_churn  = sel.includes('mrr_churn')  && churnVal > 0 && (ticket||mrrManual/meses) > 0 ? churnVal * (ticket || mrrManual/meses) : null;
+  const inadim_pct = sel.includes('inadim_pct') && inadim !== null && rec > 0 ? inadim / rec * 100 : null;
+  const ating_meta = sel.includes('ating_meta') && meta_rec > 0 ? rec / meta_rec * 100 : null;
+
+  // Sempre mostrar receita/despesa/resultado do CC
   const kpisHTML = [
-    { label:'Receita total',          value:fmtFull(rec),              sub:'no período',          cor:'var(--green)',  show: rec>0 },
-    { label:'Despesa total',          value:fmtFull(desp),             sub:'no período',          cor:'var(--red)',    show: true },
-    { label:'Resultado',              value:fmtFull(res),              sub:'receita − despesa',   cor:res>=0?'var(--green)':'var(--red)', show: rec>0 },
-    { label:'Margem',                 value:margem.toFixed(1)+'%',     sub:'contribuição',        cor:margem>=40?'var(--green)':'var(--amber)', show: rec>0 },
-    { label:'MRR',                    value:fmtK(mrr),                 sub:'receita recorrente/mês', cor:'var(--green)', show: mrr!==null&&mrr>0 },
-    { label:'Unidades / Clientes',    value:String(unidades),          sub:'ativos no período',   cor:'var(--blue)',   show: unidades!==null },
-    { label:'Novos no período',       value:String(novos),             sub:'aquisições',          cor:'var(--blue)',   show: novos!==null },
-    { label:'Churn',                  value:String(churn),             sub:'cancelamentos',       cor:'var(--red)',    show: churn!==null },
-    { label:'MRR Churn',              value:fmtK(mrr_churn),          sub:'receita perdida',     cor:'var(--red)',    show: mrr_churn!==null&&mrr_churn>0 },
-    { label:'ARPU',                   value:fmtK(arpu),               sub:'receita/cliente',     cor:'var(--amber)',  show: arpu!==null&&arpu>0 },
-    { label:'Ticket Médio',           value:fmtK(ticket),             sub:'receita/unidades',    cor:'var(--amber)',  show: ticket!==null&&ticket>0 },
-    { label:'CAC',                    value:fmtK(cac),                sub:'custo/novo cliente',  cor:'var(--amber)',  show: cac!==null&&cac>0 },
-    { label:'ROI',                    value:roi!==null?roi.toFixed(1)+'%':'—', sub:'retorno s/ despesa', cor:roi>=0?'var(--green)':'var(--red)', show: roi!==null },
-    { label:'Inadimplência',          value:inadim!==null?fmtFull(inadim):'—', sub:'valor em aberto', cor:'var(--red)', show: inadim!==null },
-    { label:'Inadimplência %',        value:inadim_pct!==null?inadim_pct.toFixed(1)+'%':'—', sub:'do total da receita', cor:inadim_pct>10?'var(--red)':'var(--amber)', show: inadim_pct!==null },
-    { label:'Conversão',              value:conversao!==null?conversao.toFixed(1)+'%':'—', sub:'taxa média do período', cor:'var(--blue)', show: conversao!==null },
+    { label:'Receita total',          value:fmtFull(rec),   sub:'no período', cor:'var(--green)', show: rec>0 },
+    { label:'Despesa total',          value:fmtFull(desp),  sub:'no período', cor:'var(--red)',   show: true },
+    { label:'Resultado',              value:fmtFull(res),   sub:'receita − despesa', cor:res>=0?'var(--green)':'var(--red)', show: true },
+    // Manuais selecionados
+    { label:'Unidades / Clientes',    value:unidades!==null?unidades.toString():'—',   sub:'ativos no período',    cor:'var(--blue)',  show: unidades!==null },
+    { label:'Novos no período',       value:novos!==null?novos.toString():'—',         sub:'aquisições',           cor:'var(--blue)',  show: novos!==null },
+    { label:'Churn',                  value:churnVal!==null?churnVal.toString():'—',   sub:'cancelamentos',        cor:'var(--red)',   show: churnVal!==null },
+    { label:'Inadimplência',          value:inadim!==null?fmtFull(inadim):'—',         sub:'valor em aberto',      cor:'var(--red)',   show: inadim!==null },
+    { label:'Conversão %',            value:conversao!==null?conversao.toFixed(1)+'%':'—', sub:'taxa média',       cor:'var(--blue)',  show: conversao!==null },
+    { label:'Meta de Receita',        value:meta_rec!==null?fmtFull(meta_rec):'—',    sub:'projetado',            cor:'var(--text2)', show: meta_rec!==null },
+    { label:'MRR',                    value:mrrManual!==null?fmtK(mrrManual/meses):'—', sub:'recorrente/mês',     cor:'var(--green)', show: mrrManual!==null },
+    { label:'LTV',                    value:ltvManual!==null?fmtK(ltvManual/meses):'—', sub:'por cliente',        cor:'var(--green)', show: ltvManual!==null },
+    // Calculados selecionados
+    { label:'Ticket Médio',           value:ticket!==null?fmtK(ticket):'Precisa de Unidades', sub:'receita÷unidades',    cor:'var(--amber)', show: sel.includes('ticket') },
+    { label:'ARPU',                   value:arpu!==null?fmtK(arpu):'Precisa de Unidades',     sub:'receita÷clientes',    cor:'var(--amber)', show: sel.includes('arpu') },
+    { label:'CAC',                    value:cac!==null?fmtK(cac):'Precisa de Novos',          sub:'despesa÷novos',       cor:'var(--amber)', show: sel.includes('cac') },
+    { label:'ROI %',                  value:roi!==null?roi.toFixed(1)+'%':'—',                sub:'retorno s/ despesa',  cor:roi>=0?'var(--green)':'var(--red)', show: sel.includes('roi') },
+    { label:'Margem %',               value:margemCalc!==null?margemCalc.toFixed(1)+'%':'—',  sub:'contribuição',        cor:margemCalc>=40?'var(--green)':'var(--amber)', show: sel.includes('margem') },
+    { label:'MRR Churn',              value:mrr_churn!==null?fmtK(mrr_churn):'Precisa de Churn+Ticket', sub:'receita perdida', cor:'var(--red)', show: sel.includes('mrr_churn') },
+    { label:'Inadimplência %',        value:inadim_pct!==null?inadim_pct.toFixed(1)+'%':'Precisa de Inadim.', sub:'do total', cor:inadim_pct>10?'var(--red)':'var(--amber)', show: sel.includes('inadim_pct') },
+    { label:'Atingimento Meta %',     value:ating_meta!==null?ating_meta.toFixed(1)+'%':'Precisa de Meta', sub:'receita÷meta', cor:ating_meta>=100?'var(--green)':'var(--amber)', show: sel.includes('ating_meta') },
   ].filter(k=>k.show);
 
   document.getElementById('servico-cc-kpis').innerHTML = `
