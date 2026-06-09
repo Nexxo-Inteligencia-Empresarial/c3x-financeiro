@@ -771,6 +771,11 @@ function renderTudo() {
   renderProjecoes();
   renderServicos();
   renderConfig();
+  // Re-renderizar página de serviço se estiver aberta
+  const paginaAtiva = document.querySelector('.page.active');
+  if (paginaAtiva && paginaAtiva.id === 'page-servicos-cc' && CC_ATUAL) {
+    abrirCC(CC_ATUAL);
+  }
 }
 
 function renderVisao() {
@@ -951,6 +956,7 @@ function renderProjecoes() {
 let CC_DATA = {}; // { nomCC: { desp: Array(12), lancamentos: [] } }
 let CC_RECEITA = {}; // { nomeCC: Array(12) } — receitas por CC via categories
 let CC_INADIM  = {}; // { nomeCC: { total: 0, porMes: Array(12) } } — inadimplência por CC
+let CC_ATUAL   = null; // CC atualmente aberto na página de serviço
 
 async function carregarCentrosCusto() {
   // Buscar todos os débitos de 2026 com centro de custo
@@ -1213,6 +1219,7 @@ function abrirCC(cc) {
   const kpisSel = config.ccKpis[cc] || [];
   const dados = config.ccDados[cc] || {};
 
+  CC_ATUAL = cc;
   document.getElementById('servico-cc-title').textContent = cc;
   document.getElementById('page-servicos-cc').dataset.cc = cc;
 
