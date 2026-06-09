@@ -1202,7 +1202,7 @@ function renderServicos() {
         <span style="font-size:12px;color:var(--text2)">Resultado</span>
         <span class="badge ${res>=0?'badge-green':'badge-red'}">${fmtK(res)}</span>
       </div>
-      ${CC_INADIM[cc]&&CC_INADIM[cc].total>0?`<div class="service-row"><span style="font-size:12px;color:var(--text2)">Inadimplência</span><span style="font-size:12px;font-weight:600;color:var(--red)">⚠️ ${fmtK(sumRange(CC_INADIM[cc].porMes,from,to))}</span></div>`:''}`
+      ${CC_INADIM[cc]&&CC_INADIM[cc].total>0?`<div class="service-row"><span style="font-size:12px;color:var(--text2)">Inadimplência</span><span style="font-size:12px;font-weight:600;color:var(--red)">⚠️ ${fmtK(sumRange(CC_INADIM[cc].porMes,from,to))}</span></div>`:''}
     </div>`;
   }).join('');
 }
