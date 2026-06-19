@@ -735,13 +735,17 @@ async function niboGet(endpoint, extra={}) {
    CARREGAR DADOS DO NIBO
 ═══════════════════════════════════════════ */
 async function carregarNibo() {
-  document.getElementById('loader-label').textContent = 'Buscando centros de custo...';
-  await carregarCentrosCusto();
-  document.getElementById('loader-label').textContent = 'Buscando receitas...';
+  document.getElementById('loader-label').textContent = 'Buscando dados do Nibo...';
 
-  // Buscar schedules/credit (contas a receber) por mês
-  const creditData = await niboGet('schedules/credit', {'$orderby':'dueDate','$top':'500','$filter':'year(dueDate) eq 2026'});
-  const debitData  = await niboGet('schedules/debit',  {'$orderby':'dueDate','$top':'500','$filter':'year(dueDate) eq 2026'});
+  // Buscar ambos endpoints em paralelo — uma única vez, compartilhado entre funções
+  const [creditData, debitData] = await Promise.all([
+    niboGet('schedules/credit', {'$orderby':'dueDate','$top':'500','$filter':'year(dueDate) eq 2026'}),
+    niboGet('schedules/debit',  {'$orderby':'dueDate','$top':'500','$filter':'year(dueDate) eq 2026'})
+  ]);
+
+  document.getElementById('loader-label').textContent = 'Processando centros de custo...';
+  await carregarCentrosCusto(creditData, debitData);
+  document.getElementById('loader-label').textContent = 'Processando receitas...';
 
   // Processar por mês
   REAL.receita  = Array(12).fill(0);
@@ -933,7 +937,7 @@ function renderCategorias() {
   const tbody = document.getElementById('cat-table-body');
   tbody.innerHTML = '';
   for (const r of rows) {
-    const st = r.vari < -0.05 ? ['badge-green','Dentro'] : r.vari===0&&r.proj===0&&r.real===0 ? ['badge-gray','—'] : ['badge-red','Estourou'];
+    const st = r.vari===0&&r.proj===0&&r.real===0 ? ['badge-gray','—'] : r.vari<=0 ? ['badge-green','Dentro'] : ['badge-red','Estourou'];
     tbody.innerHTML += `<tr>
       <td class="td-name">${r.cat}</td>
       <td class="td-mono">${fmtK(r.proj)}</td>
@@ -981,7 +985,7 @@ function renderMensal() {
       <td class="td-mono">${fmtFull(ln.r)}</td>
       <td class="td-mono" style="color:${dif>=0?'var(--green)':'var(--red)'}">${dif>=0?'+':''}${fmtFull(dif)}</td>
       <td class="td-mono">${fmtPct(ating)}</td>
-      <td><span class="badge ${stv}">${dif>=0?'+':''+(ating*100-100).toFixed(1)+'%'}</span></td>
+      <td><span class="badge ${stv}">${(dif>=0?'+':'')+(ating*100-100).toFixed(1)+'%'}</span></td>
     </tr>`;
   }
 }
@@ -1011,11 +1015,7 @@ let CC_RECEITA = {}; // { nomeCC: Array(12) } — receitas por CC via categories
 let CC_INADIM  = {}; // { nomeCC: { total: 0, porMes: Array(12) } } — inadimplência por CC
 let CC_ATUAL   = null; // CC atualmente aberto na página de serviço
 
-async function carregarCentrosCusto() {
-  // Buscar todos os débitos de 2026 com centro de custo
-  const debitData = await niboGet('schedules/debit', {'$orderby':'dueDate','$top':'500','$filter':'year(dueDate) eq 2026'});
-  const creditData = await niboGet('schedules/credit', {'$orderby':'dueDate','$top':'500','$filter':'year(dueDate) eq 2026'});
-
+async function carregarCentrosCusto(creditData, debitData) {
   CC_DATA = {};
   CC_RECEITA = {};
 
@@ -1218,7 +1218,7 @@ function renderServicos() {
     const rec  = CC_RECEITA[cc] ? sumRange(CC_RECEITA[cc], from, to) : 0;
     const res  = rec - desp;
     const cor  = colors[idx % colors.length];
-    return `<div class="service-card" onclick="abrirCC('${cc.replace(/'/g,"\'")}')">
+    return `<div class="service-card" onclick="abrirCC(${JSON.stringify(cc)})">`
       <div style="width:32px;height:4px;border-radius:2px;background:${cor};margin-bottom:12px"></div>
       <div class="service-name">${cc}</div>
       <div class="service-label">Despesa realizada</div>
@@ -1326,7 +1326,7 @@ function abrirCC(cc) {
   if (kpiChart) {
     const kpiDef = KPI_TIPOS.find(k=>k.id===kpiChart);
     document.getElementById('chart-cc-kpi-title').textContent = kpiDef.label;
-    const kpiVals = (dados[kpiChart]||Array(12).fill(0)).slice(from, to+1);
+    const kpiVals = (orcData[cc]?.[kpiChart]?.real || Array(12).fill(0)).slice(from, to+1);
     mkChart('chartCCKpi',{type:'bar',data:{labels,datasets:[{label:kpiDef.label,data:kpiVals,backgroundColor:'rgba(59,130,246,0.7)',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{color:gc.grid},ticks:{color:gc.text,font:{size:11}}},y:{grid:{color:gc.grid},ticks:{color:gc.text,font:{size:11}}}}}});
   } else {
     document.getElementById('chart-cc-kpi-title').textContent = 'Nenhum KPI operacional configurado';
@@ -1463,6 +1463,7 @@ async function iniciar() {
     document.getElementById('main').style.display = 'flex';
     const now = new Date();
     document.getElementById('topbar-updated').textContent = `Atualizado às ${now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
+    iniciarAutoRefresh();
   } catch(e) {
     console.error(e);
     document.getElementById('loading-screen').style.display = 'none';
@@ -1477,12 +1478,22 @@ async function recarregar() {
   document.getElementById('loading-screen').style.display = 'flex';
   document.getElementById('sidebar').style.display = 'none';
   document.getElementById('main').style.display = 'none';
-  await carregarNibo();
-  renderTudo();
-  document.getElementById('loading-screen').style.display = 'none';
-  document.getElementById('sidebar').style.display = 'flex';
-  document.getElementById('main').style.display = 'flex';
-  document.getElementById('topbar-updated').textContent = `Atualizado às ${new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
+  try {
+    await carregarNibo();
+    renderTudo();
+    document.getElementById('loading-screen').style.display = 'none';
+    document.getElementById('sidebar').style.display = 'flex';
+    document.getElementById('main').style.display = 'flex';
+    document.getElementById('topbar-updated').textContent = `Atualizado às ${new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
+  } catch(e) {
+    console.error('Erro ao recarregar:', e);
+    document.getElementById('loading-screen').style.display = 'none';
+    document.getElementById('sidebar').style.display = 'flex';
+    document.getElementById('main').style.display = 'flex';
+    const t = document.getElementById('topbar-updated');
+    if (t) t.textContent = 'Erro ao atualizar — tente novamente';
+    throw e;
+  }
 }
 
 function sair() {
@@ -1543,7 +1554,7 @@ function renderOrcamento() {
   if (!ORC_CC_ATIVO) ORC_CC_ATIVO = ccsComMovimento[0];
   const chipsEl = document.getElementById('orc-cc-chips');
   chipsEl.innerHTML = ccsComMovimento.map(cc => `
-    <button onclick="selecionarOrcCC('${cc.replace(/'/g, "\'")}',this)"
+    <button onclick="selecionarOrcCC(${JSON.stringify(cc)},this)"
       style="padding:6px 14px;border-radius:20px;border:1px solid ${ORC_CC_ATIVO===cc?'var(--green)':'var(--border)'};
              background:${ORC_CC_ATIVO===cc?'var(--green)':'white'};
              color:${ORC_CC_ATIVO===cc?'white':'var(--text2)'};
@@ -1669,14 +1680,15 @@ function iniciarAutoRefresh() {
   document.getElementById('countdown-badge').style.display = 'inline';
   atualizarCountdown();
 
-  // Countdown visual a cada segundo
-  countdownTimer = setInterval(() => {
+  // Countdown visual a cada segundo — captura ID local para evitar race condition
+  const novoCountdown = setInterval(() => {
     segundosRestantes--;
     atualizarCountdown();
     if (segundosRestantes <= 0) {
-      clearInterval(countdownTimer);
+      clearInterval(novoCountdown);
     }
   }, 1000);
+  countdownTimer = novoCountdown;
 
   // Auto-refresh após 30 minutos
   autoRefreshTimer = setTimeout(async () => {
