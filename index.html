@@ -737,10 +737,11 @@ async function niboGet(endpoint, extra={}) {
 async function carregarNibo() {
   document.getElementById('loader-label').textContent = 'Buscando dados do Nibo...';
 
-  // Buscar ambos endpoints em paralelo — uma única vez, compartilhado entre funções
+  // Buscar ambos endpoints em paralelo — filtro ampliado para pegar pagamentos
+  // feitos em 2026 com vencimento em 2025 (regime de caixa correto)
   const [creditData, debitData] = await Promise.all([
-    niboGet('schedules/credit', {'$orderby':'dueDate','$top':'500','$filter':'year(dueDate) eq 2026'}),
-    niboGet('schedules/debit',  {'$orderby':'dueDate','$top':'500','$filter':'year(dueDate) eq 2026'})
+    niboGet('schedules/credit', {'$orderby':'dueDate','$top':'1000','$filter':'year(dueDate) ge 2025'}),
+    niboGet('schedules/debit',  {'$orderby':'dueDate','$top':'1000','$filter':'year(dueDate) ge 2025'})
   ]);
 
   document.getElementById('loader-label').textContent = 'Processando centros de custo...';
@@ -796,25 +797,6 @@ async function carregarNibo() {
 
   // Resultado
   for (let i=0;i<12;i++) REAL.resultado[i] = REAL.receita[i] - REAL.despesa[i];
-
-  // Da planilha DRE (valores confirmados Jan-Mai)
-  const dreReceita  = [36217.82, 36502.5, 39050.11, 38148.68, 44596.18];
-  const dreDespesa  = [16008.86, 10056.34, 49913.35, 16242.77, 26174.20];
-  const dreEscola   = [7122.68, 18852.5, 15651.15, 13798.68, 15026.18];
-  const drePrime    = [21588.84, 16650, 15350, 19350, 19350];
-  const dreDestrava = [7506.3, 0, 3048.96, 0, 0];
-
-  // Usar DRE como base para meses com dados (mais preciso que schedules)
-  for (let i=0;i<dreReceita.length;i++) {
-    if (dreReceita[i]>0) {
-      REAL.receita[i] = dreReceita[i];
-      REAL.despesa[i] = dreDespesa[i];
-      REAL.resultado[i] = dreReceita[i] - dreDespesa[i];
-      REAL.escola[i] = dreEscola[i];
-      REAL.prime[i] = drePrime[i];
-      REAL.destrava[i] = dreDestrava[i];
-    }
-  }
 }
 
 /* ═══════════════════════════════════════════
