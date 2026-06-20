@@ -824,6 +824,23 @@ async function carregarNibo() {
   console.log('[Nibo] Entradas Asaas com scheduleId:', Object.keys(_MAPA_ENTRADA_CREDITO).length,
     '| Agendamentos pagos com scheduleId:', _schedulesComAgendamento.size);
 
+  // Diagnóstico: isEntry=true por mês de 2026
+  const _entryPorMes = {};
+  for (const item of (creditData.items||[])) {
+    if (item.isEntry !== true) continue;
+    const dt = item.dueDate ? new Date(item.dueDate) : null;
+    if (!dt || dt.getFullYear() !== 2026) continue;
+    const m = dt.getMonth();
+    if (!_entryPorMes[m]) _entryPorMes[m] = { count:0, total:0, items:[] };
+    _entryPorMes[m].count++;
+    _entryPorMes[m].total += Math.abs(item.value||0);
+    if (m === 0) _entryPorMes[m].items.push({ desc: item.description, stake: item.stakeholder?.name, val: item.value, scheduleId: item.scheduleId });
+  }
+  const meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  console.log('[Nibo] isEntry=true por mês 2026:');
+  Object.entries(_entryPorMes).forEach(([m,d]) => console.log(`  ${meses[m]}: ${d.count} itens | R$ ${d.total.toFixed(2)}`));
+  if (_entryPorMes[0]) { console.log('[Nibo] isEntry=true Janeiro — detalhes:'); console.table(_entryPorMes[0].items); }
+
   // Helper: retorna a data de caixa correta para um item de crédito.
   // Usa _MAPA_ENTRADA_CREDITO (escopo de módulo) para lookup do lançamento Asaas.
   function _dataCaixaCredito(item) {
