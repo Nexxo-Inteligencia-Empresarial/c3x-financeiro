@@ -332,10 +332,13 @@ tr:hover td { background: #f9fafb; }
 
   <!-- PAGE: VISÃO EXECUTIVA -->
   <div class="page active" id="page-visao">
-    <div class="page-header">
-      <div class="page-badge">CEO View</div>
-      <h1 class="page-title">Visão Executiva</h1>
-      <p class="page-sub">Acompanhamento consolidado — <strong>Regime de Caixa</strong>: apenas valores efetivamente recebidos/pagos × projetado.</p>
+    <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
+      <div>
+        <div class="page-badge">CEO View</div>
+        <h1 class="page-title">Visão Executiva</h1>
+        <p class="page-sub">Acompanhamento consolidado — <strong>Regime de Caixa</strong>: apenas valores efetivamente recebidos/pagos × projetado.</p>
+      </div>
+      <button onclick="exportarJaneiro()" style="background:#1f2937;color:#9ca3af;border:1px solid #374151;padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;white-space:nowrap;margin-top:4px">⬇ Exportar Jan CSV</button>
     </div>
     <div class="kpi-grid">
       <div class="kpi-card">
@@ -664,6 +667,8 @@ const PROJ_CAT = {
 /* ═══════════════════════════════════════════
    DADOS REALIZADOS (do Nibo via API)
 ═══════════════════════════════════════════ */
+let RAW_CREDITS = [];
+
 let REAL = {
   receita:  Array(12).fill(0),
   despesa:  Array(12).fill(0),
@@ -758,6 +763,7 @@ async function carregarNibo() {
 
   loaderEl.textContent = 'Buscando receitas...';
   const creditData = await niboGetAll('schedules/credit', filtro);
+  RAW_CREDITS = creditData.items || [];
 
   // Tenta buscar itens pagos em 2026 com dueDate em outros anos (regime de caixa real)
   let extraCredits = [];
@@ -823,6 +829,38 @@ async function carregarNibo() {
     }
     // Clube dos Sócios, C3X, Juros — somam apenas na receita total
   }
+
+  // === DIAGNÓSTICO JANEIRO — aparece no console (F12) após carregar ===
+  const _janItems = (creditData.items||[]).map(item => {
+    const isPaidTrue = item.isPaid === true;
+    const value     = Math.abs(item.value||0);
+    const openValue = Math.abs(item.openValue||0);
+    const v = isPaidTrue ? value : value - openValue;
+    const dateUsed  = item.paymentDate || item.dueDate || item.scheduleDate || '';
+    const dt = dateUsed ? new Date(dateUsed) : null;
+    const conta = v > 0 && dt && dt.getFullYear()===2026 && dt.getMonth()===0;
+    return {
+      descricao:    item.description || '',
+      stakeholder:  item.stakeholder?.name || '',
+      categoria:    item.categories?.[0]?.categoryName || item.categoryName || '',
+      isPaid:       item.isPaid,
+      value:        value.toFixed(2),
+      openValue:    openValue.toFixed(2),
+      v_contado:    conta ? v.toFixed(2) : '',
+      paymentDate:  (item.paymentDate||'').substring(0,10),
+      dueDate:      (item.dueDate||'').substring(0,10),
+      data_usada:   dateUsed.substring(0,10),
+      status:       conta ? 'CONTA' : (v<=0 ? 'EXCL:v=0' : !dt ? 'EXCL:sem-data' : dt.getFullYear()!==2026 ? `EXCL:ano=${dt.getFullYear()}` : `EXCL:mes=${dt.getMonth()+1}`)
+    };
+  });
+  const _janContam = _janItems.filter(i=>i.status==='CONTA');
+  const _janTotal  = _janContam.reduce((s,i)=>s+parseFloat(i.v_contado),0);
+  console.log(`\n=== RECEITA JANEIRO 2026 ===`);
+  console.log(`Total dashboard: R$ ${_janTotal.toFixed(2)}  |  Total Nibo: R$ 39882.07  |  Diferença: R$ ${(_janTotal-39882.07).toFixed(2)}`);
+  console.log(`Itens que CONTAM (${_janContam.length}):`);
+  console.table(_janContam.map(i=>({descricao:i.descricao, stakeholder:i.stakeholder, categoria:i.categoria, isPaid:i.isPaid, value:i.value, v_contado:i.v_contado, paymentDate:i.paymentDate, dueDate:i.dueDate, data_usada:i.data_usada})));
+  // === FIM DIAGNÓSTICO ===
+
   // Investimentos/distribuições: não entram no Resultado Operacional
   const ehInvestimento = cat => /adiantamento de lucros|equipamentos|utensílio/i.test(cat);
 
@@ -1761,6 +1799,82 @@ async function recarregarManual() {
   // Reset do timer ao atualizar manualmente
   await recarregar();
   iniciarAutoRefresh();
+}
+
+function exportarJaneiro() {
+  if (!RAW_CREDITS.length) { alert('Dados ainda não carregados. Aguarde o dashboard terminar de carregar.'); return; }
+
+  const fmtNum = v => v == null ? '' : Number(v).toFixed(2).replace('.', ',');
+  const fmtDate = d => d ? d.substring(0, 10) : '';
+  const csvRow = cells => cells.map(c => {
+    const s = String(c == null ? '' : c);
+    return (s.includes(';') || s.includes('"') || s.includes('\n')) ? `"${s.replace(/"/g,'""')}"` : s;
+  }).join(';');
+
+  const header = ['#','ID','Descrição','Stakeholder','Categoria','isPaid','value','openValue','V_Contado','paymentDate','dueDate','scheduleDate','DataUsada','CampoData','Status'];
+  const linhas = [csvRow(header)];
+
+  let totalContado = 0, countContado = 0, countExcl = 0;
+
+  RAW_CREDITS.forEach((item, idx) => {
+    const isPaidTrue = item.isPaid === true;
+    const value     = Math.abs(item.value    || 0);
+    const openValue = Math.abs(item.openValue || 0);
+    const v = isPaidTrue ? value : value - openValue;
+
+    const datePay  = item.paymentDate;
+    const dateDue  = item.dueDate;
+    const dateSch  = item.scheduleDate;
+    const dateUsed = datePay || dateDue || dateSch;
+    const dateField = datePay ? 'paymentDate' : (dateDue ? 'dueDate' : 'scheduleDate');
+
+    let excl = null;
+    if (v <= 0) excl = v === 0 ? 'v=0' : `v negativo (${v.toFixed(2)})`;
+    else if (!dateUsed) excl = 'sem data';
+    else {
+      const dt = new Date(dateUsed);
+      if (dt.getFullYear() !== 2026) excl = `ano=${dt.getFullYear()}`;
+      else if (dt.getMonth() !== 0)  excl = `mes=${dt.getMonth()+1} (nao jan)`;
+    }
+
+    const vContado = excl ? 0 : v;
+    if (!excl) { totalContado += v; countContado++; } else countExcl++;
+
+    const cat   = item.categories?.[0]?.categoryName || item.categoryName || '';
+    const desc  = item.description || '';
+    const stake = item.stakeholder?.name || '';
+    const id    = item.scheduleId || item.id || '';
+    const statusPag = isPaidTrue ? 'PAGO' : (openValue > 0 && openValue < value) ? 'PARCIAL' : 'NAO_PAGO';
+
+    linhas.push(csvRow([
+      idx+1, id, desc, stake, cat,
+      statusPag, fmtNum(value), fmtNum(openValue),
+      excl ? '' : fmtNum(vContado),
+      fmtDate(datePay), fmtDate(dateDue), fmtDate(dateSch),
+      fmtDate(dateUsed), dateField,
+      excl ? `EXCLUIDO: ${excl}` : 'CONTA'
+    ]));
+  });
+
+  const niboTotal = 39882.07;
+  const diff = totalContado - niboTotal;
+  linhas.push(csvRow([]));
+  linhas.push(csvRow(['','','','','','','','TOTAL DASH',   fmtNum(totalContado),'','','','','','']));
+  linhas.push(csvRow(['','','','','','','','TOTAL NIBO',   '39882,07',          '','','','','','']));
+  linhas.push(csvRow(['','','','','','','','DIFERENÇA',    fmtNum(diff),        '','','','','','']));
+  linhas.push(csvRow([]));
+  linhas.push(csvRow(['','','','','','','','Itens contados',  countContado, '','','','','','']));
+  linhas.push(csvRow(['','','','','','','','Itens excluidos', countExcl,    '','','','','','']));
+  linhas.push(csvRow(['','','','','','','','Total API',       RAW_CREDITS.length,'','','','','','']));
+
+  const bom = '﻿';
+  const csv = bom + linhas.join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = 'relatorio-janeiro-2026.csv';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
 window.addEventListener('DOMContentLoaded', ()=>{
