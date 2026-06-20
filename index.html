@@ -668,6 +668,9 @@ const PROJ_CAT = {
    DADOS REALIZADOS (do Nibo via API)
 ═══════════════════════════════════════════ */
 let RAW_CREDITS = [];
+// Mapa scheduleId → dueDate para lançamentos bancários reais (isEntry=true) do Asaas.
+// Construído em carregarNibo() e reutilizado em carregarCentrosCusto().
+let _MAPA_ENTRADA_CREDITO = {};
 
 let REAL = {
   receita:  Array(12).fill(0),
@@ -772,6 +775,15 @@ async function carregarNibo() {
   console.log('[Nibo] Total débitos:', debitData.items.length, '| pagos:', debitData.items.filter(i=>i.isPaid).length);
   loaderEl.textContent = 'Processando...';
 
+  // Construir mapa global de lançamentos bancários reais (isEntry=true) por scheduleId.
+  // Feito aqui para estar disponível tanto em carregarCentrosCusto quanto no loop principal.
+  _MAPA_ENTRADA_CREDITO = {};
+  for (const item of (creditData.items||[])) {
+    if (item.isEntry === true && item.scheduleId && item.dueDate) {
+      _MAPA_ENTRADA_CREDITO[item.scheduleId] = item.dueDate;
+    }
+  }
+
   document.getElementById('loader-label').textContent = 'Processando centros de custo...';
   await carregarCentrosCusto(creditData, debitData);
   document.getElementById('loader-label').textContent = 'Processando receitas...';
@@ -781,20 +793,72 @@ async function carregarNibo() {
   REAL.despesa  = Array(12).fill(0);
   REAL.categorias = {};
 
-  // REGIME DE CAIXA: data de recebimento = updateDate (quando foi marcado como pago no Nibo)
-  // A API schedules não retorna paymentDate confiável; updateDate reflete o registro do recebimento.
+  // REGIME DE CAIXA — lógica de data de recebimento:
+  //
+  // O endpoint schedules/credit mistura dois tipos de registro:
+  //   isEntry=true  → lançamento bancário real (Asaas ou importação): dueDate = data real do crédito
+  //   isEntry=false → agendamento criado manualmente:
+  //       • baixa manual → paymentDate preenchido = data real
+  //       • pago via Asaas → paymentDate=null; o Nibo cria um registro isEntry=true
+  //         separado com dueDate = data real. Esse registro possui scheduleId apontando
+  //         para o agendamento original, ou o agendamento possui o mesmo scheduleId.
+  //
+  // Estratégia:
+  //   1. Construir mapa scheduleId → dueDate de todos os isEntry=true (lançamentos reais).
+  //   2. Para isEntry=true → dueDate é a data real (não usar paymentDate/updateDate).
+  //   3. Para isEntry=false, isPaid=true → paymentDate (baixa manual) OU
+  //      mapa[scheduleId] (Asaas/isEntry=true correspondente) OU dueDate (fallback).
+  //   4. Para isEntry=false, isPaid=false/parcial → dueDate (competência, projeção).
+
+  // Passo 2: pré-computar set de scheduleIds com agendamento pago (isEntry=false, isPaid=true)
+  // _MAPA_ENTRADA_CREDITO já foi preenchido antes de carregarCentrosCusto (escopo de módulo).
+  //
+  // _schedulesComAgendamento: usado para evitar dupla contagem quando um isEntry=true
+  // é o lançamento bancário de um agendamento isEntry=false que também está na lista.
+  const _schedulesComAgendamento = new Set();
+  for (const item of (creditData.items||[])) {
+    if (item.isEntry !== true && item.isPaid === true && item.scheduleId) {
+      _schedulesComAgendamento.add(item.scheduleId);
+    }
+  }
+  console.log('[Nibo] Entradas Asaas com scheduleId:', Object.keys(_MAPA_ENTRADA_CREDITO).length,
+    '| Agendamentos pagos com scheduleId:', _schedulesComAgendamento.size);
+
+  // Helper: retorna a data de caixa correta para um item de crédito.
+  // Usa _MAPA_ENTRADA_CREDITO (escopo de módulo) para lookup do lançamento Asaas.
+  function _dataCaixaCredito(item) {
+    if (item.isEntry === true) {
+      // Lançamento bancário real (Asaas/importado): dueDate = data do movimento bancário
+      return item.dueDate || item.scheduleDate;
+    }
+    if (item.isPaid === true) {
+      // Agendamento pago: paymentDate (baixa manual) > data do lançamento Asaas > dueDate
+      return item.paymentDate
+        || (item.scheduleId && _MAPA_ENTRADA_CREDITO[item.scheduleId])
+        || item.dueDate
+        || item.scheduleDate;
+    }
+    // Não pago / parcialmente pago: usa dueDate (data de vencimento / competência)
+    return item.dueDate || item.scheduleDate;
+  }
+
   // isPaid=true → value inteiro; senão → value - openValue (parcialmente recebido)
   let _cSkipNaoPago=0, _cSkipAno=0, _cContado=0;
   for (const item of (creditData.items||[])) {
-    const isPaidTrue = item.isPaid === true;
+    // Evitar dupla contagem: isEntry=true com scheduleId que já tem agendamento (isEntry=false)
+    // pago — o agendamento será contado com a data correta via _MAPA_ENTRADA_CREDITO.
+    // Se isEntry=true sem agendamento correspondente, é receita avulsa: contar diretamente.
+    if (item.isEntry === true && item.scheduleId && _schedulesComAgendamento.has(item.scheduleId)) {
+      continue; // espelho do agendamento, será contado pelo isEntry=false
+    }
+
+    const isPaidTrue = item.isPaid === true || item.isEntry === true;
     const v = isPaidTrue
       ? Math.abs(item.value||0)
       : Math.abs(item.value||0) - Math.abs(item.openValue||0);
     if (v <= 0) { _cSkipNaoPago++; continue; }
-    // Regime de caixa: usa updateDate (data do registro do pagamento) para isPaid=true
-    const d = isPaidTrue
-      ? (item.updateDate || item.dueDate || item.scheduleDate)
-      : (item.dueDate || item.scheduleDate);
+    // Regime de caixa: data real de recebimento
+    const d = _dataCaixaCredito(item);
     if (!d) continue;
     const dt = new Date(d);
     if (dt.getFullYear()!==2026) { _cSkipAno++; continue; }
@@ -820,28 +884,28 @@ async function carregarNibo() {
 
   // === DIAGNÓSTICO JANEIRO — aparece no console (F12) após carregar ===
   const _janItems = (creditData.items||[]).map(item => {
-    const isPaidTrue = item.isPaid === true;
+    const isEspelho = item.isEntry === true && item.scheduleId && _schedulesComAgendamento.has(item.scheduleId);
+    const isPaidTrue = item.isPaid === true || item.isEntry === true;
     const value     = Math.abs(item.value||0);
     const openValue = Math.abs(item.openValue||0);
     const v = isPaidTrue ? value : value - openValue;
-    // Mesma lógica do loop principal: updateDate para pagos, dueDate para não pagos
-    const dateUsed = isPaidTrue
-      ? (item.updateDate || item.dueDate || item.scheduleDate || '')
-      : (item.dueDate || item.scheduleDate || '');
+    const dateUsed = _dataCaixaCredito(item) || '';
     const dt = dateUsed ? new Date(dateUsed) : null;
-    const conta = v > 0 && dt && dt.getFullYear()===2026 && dt.getMonth()===0;
+    const conta = !isEspelho && v > 0 && dt && dt.getFullYear()===2026 && dt.getMonth()===0;
     return {
       descricao:    item.description || '',
       stakeholder:  item.stakeholder?.name || '',
       categoria:    item.categories?.[0]?.categoryName || item.categoryName || '',
+      isEntry:      item.isEntry,
       isPaid:       item.isPaid,
+      scheduleId:   item.scheduleId||'',
       value:        value.toFixed(2),
       openValue:    openValue.toFixed(2),
       v_contado:    conta ? v.toFixed(2) : '',
       paymentDate:  (item.paymentDate||'').substring(0,10),
       dueDate:      (item.dueDate||'').substring(0,10),
       data_usada:   dateUsed.substring(0,10),
-      status:       conta ? 'CONTA' : (v<=0 ? 'EXCL:v=0' : !dt ? 'EXCL:sem-data' : dt.getFullYear()!==2026 ? `EXCL:ano=${dt.getFullYear()}` : `EXCL:mes=${dt.getMonth()+1}`)
+      status:       isEspelho ? 'SKIP:espelho-asaas' : conta ? 'CONTA' : (v<=0 ? 'EXCL:v=0' : !dt ? 'EXCL:sem-data' : dt.getFullYear()!==2026 ? `EXCL:ano=${dt.getFullYear()}` : `EXCL:mes=${dt.getMonth()+1}`)
     };
   });
   const _janContam = _janItems.filter(i=>i.status==='CONTA');
@@ -849,18 +913,20 @@ async function carregarNibo() {
   console.log(`\n=== RECEITA JANEIRO 2026 ===`);
   console.log(`Total dashboard: R$ ${_janTotal.toFixed(2)}  |  Total Nibo: R$ 39882.07  |  Diferença: R$ ${(_janTotal-39882.07).toFixed(2)}`);
   console.log(`Itens que CONTAM (${_janContam.length}):`);
-  console.table(_janContam.map(i=>({descricao:i.descricao, stakeholder:i.stakeholder, categoria:i.categoria, isPaid:i.isPaid, value:i.value, v_contado:i.v_contado, paymentDate:i.paymentDate, dueDate:i.dueDate, data_usada:i.data_usada})));
+  console.table(_janContam.map(i=>({descricao:i.descricao, stakeholder:i.stakeholder, categoria:i.categoria, isEntry:i.isEntry, isPaid:i.isPaid, scheduleId:i.scheduleId, value:i.value, v_contado:i.v_contado, paymentDate:i.paymentDate, dueDate:i.dueDate, data_usada:i.data_usada})));
+  console.log(`\n=== ITENS PULADOS (espelho Asaas) ===`);
+  console.table(_janItems.filter(i=>i.status==='SKIP:espelho-asaas').map(i=>({descricao:i.descricao,scheduleId:i.scheduleId,dueDate:i.dueDate,value:i.value})));
   // === FIM DIAGNÓSTICO ===
 
   // Investimentos/distribuições: não entram no Resultado Operacional
   const ehInvestimento = cat => /adiantamento de lucros|equipamentos|utensílio/i.test(cat);
 
-  // REGIME DE CAIXA: despesas — usa updateDate como data de pagamento real
+  // REGIME DE CAIXA: despesas — usa paymentDate (baixa manual) ou dueDate como fallback
   for (const item of (debitData.items||[])) {
     const pago = item.isPaid === true || (item.isPaid == null && Math.abs(item.openValue||0) === 0 && Math.abs(item.value||0) > 0);
     if (!pago) continue;
     const d = item.isPaid === true
-      ? (item.updateDate || item.dueDate || item.scheduleDate)
+      ? (item.paymentDate || item.dueDate || item.scheduleDate)
       : (item.dueDate || item.scheduleDate);
     if (!d) continue;
     const dt = new Date(d);
@@ -1109,11 +1175,24 @@ async function carregarCentrosCusto(creditData, debitData) {
     }
   }
 
-  // Receitas por CC — REGIME DE CAIXA: apenas isPaid=true
+  // Receitas por CC — REGIME DE CAIXA: apenas isPaid=true ou isEntry=true
+  // Usa mesma lógica de data que carregarNibo: paymentDate > Asaas lookup > dueDate
   // Inadimplência: isPaid=false + dueDate no passado
   const hoje = new Date();
   CC_INADIM = {};
+
+  // Set de scheduleIds com agendamento pago — para evitar dupla contagem com isEntry=true
+  const _ccSchedulesComAgendamento = new Set();
   for (const item of (creditData.items||[])) {
+    if (item.isEntry !== true && item.isPaid === true && item.scheduleId) {
+      _ccSchedulesComAgendamento.add(item.scheduleId);
+    }
+  }
+
+  for (const item of (creditData.items||[])) {
+    // Pular isEntry=true que é espelho de agendamento (evita dupla contagem)
+    if (item.isEntry === true && item.scheduleId && _ccSchedulesComAgendamento.has(item.scheduleId)) continue;
+
     const ccs = item.costCenters || [];
     if (ccs.length === 0) continue;
     const dueDate = new Date(item.dueDate);
@@ -1125,10 +1204,13 @@ async function carregarCentrosCusto(creditData, debitData) {
     for (const cc of ccs) {
       const nome = cc.costCenterDescription || cc.description || cc.name || 'Outros';
 
-      // Receita caixa: só contar se pago, usando paymentDate
-      if (item.isPaid) {
-        const payDate = new Date(item.paymentDate || item.dueDate);
-        if (payDate.getFullYear() === 2026) {
+      // Receita caixa: só contar se pago, usando data real (paymentDate > Asaas > dueDate)
+      if (item.isPaid === true || item.isEntry === true) {
+        const dataReal = item.isEntry === true
+          ? (item.dueDate || item.scheduleDate)
+          : (item.paymentDate || (item.scheduleId && _MAPA_ENTRADA_CREDITO[item.scheduleId]) || item.dueDate || item.scheduleDate);
+        const payDate = dataReal ? new Date(dataReal) : null;
+        if (payDate && payDate.getFullYear() === 2026) {
           const mesPago = payDate.getMonth();
           if (!CC_RECEITA[nome]) CC_RECEITA[nome] = Array(12).fill(0);
           CC_RECEITA[nome][mesPago] += v;
@@ -1804,25 +1886,49 @@ function exportarJaneiro() {
     return (s.includes(';') || s.includes('"') || s.includes('\n')) ? `"${s.replace(/"/g,'""')}"` : s;
   }).join(';');
 
-  const header = ['#','ID','Descrição','Stakeholder','Categoria','isPaid','value','openValue','V_Contado','paymentDate','dueDate','scheduleDate','DataUsada','CampoData','Status'];
+  const header = ['#','ID','Descrição','Stakeholder','Categoria','isEntry','isPaid','value','openValue','V_Contado','paymentDate','dueDate','scheduleDate','DataUsada','CampoData','Status'];
   const linhas = [csvRow(header)];
+
+  // Set de scheduleIds com agendamento pago (para detectar espelhos Asaas)
+  const _expSchedulesComAgend = new Set();
+  RAW_CREDITS.forEach(item => {
+    if (item.isEntry !== true && item.isPaid === true && item.scheduleId) _expSchedulesComAgend.add(item.scheduleId);
+  });
+
+  // Função de data de caixa consistente com carregarNibo (usa _MAPA_ENTRADA_CREDITO global)
+  const _expDataCaixa = item => {
+    if (item.isEntry === true) return item.dueDate || item.scheduleDate || '';
+    if (item.isPaid === true) {
+      return item.paymentDate
+        || (item.scheduleId && _MAPA_ENTRADA_CREDITO[item.scheduleId])
+        || item.dueDate || item.scheduleDate || '';
+    }
+    return item.dueDate || item.scheduleDate || '';
+  };
 
   let totalContado = 0, countContado = 0, countExcl = 0;
 
   RAW_CREDITS.forEach((item, idx) => {
-    const isPaidTrue = item.isPaid === true;
+    // Espelhos Asaas: pulados no dashboard — marcar como excluído no CSV também
+    const isEspelho = item.isEntry === true && item.scheduleId && _expSchedulesComAgend.has(item.scheduleId);
+
+    const isPaidTrue = item.isPaid === true || item.isEntry === true;
     const value     = Math.abs(item.value    || 0);
     const openValue = Math.abs(item.openValue || 0);
     const v = isPaidTrue ? value : value - openValue;
 
-    const datePay  = item.paymentDate;
-    const dateDue  = item.dueDate;
-    const dateSch  = item.scheduleDate;
-    const dateUsed = datePay || dateDue || dateSch;
-    const dateField = datePay ? 'paymentDate' : (dateDue ? 'dueDate' : 'scheduleDate');
+    const datePay  = item.paymentDate || '';
+    const dateDue  = item.dueDate || '';
+    const dateSch  = item.scheduleDate || '';
+    const dateUsed = _expDataCaixa(item);
+    const dateField = item.isEntry === true ? 'dueDate(isEntry)'
+      : (item.paymentDate ? 'paymentDate'
+      : (item.scheduleId && _MAPA_ENTRADA_CREDITO[item.scheduleId]) ? 'Asaas(scheduleId)'
+      : (dateDue ? 'dueDate(fallback)' : 'scheduleDate'));
 
     let excl = null;
-    if (v <= 0) excl = v === 0 ? 'v=0' : `v negativo (${v.toFixed(2)})`;
+    if (isEspelho) excl = 'espelho-asaas (dupla contagem)';
+    else if (v <= 0) excl = v === 0 ? 'v=0' : `v negativo (${v.toFixed(2)})`;
     else if (!dateUsed) excl = 'sem data';
     else {
       const dt = new Date(dateUsed);
@@ -1841,6 +1947,7 @@ function exportarJaneiro() {
 
     linhas.push(csvRow([
       idx+1, id, desc, stake, cat,
+      item.isEntry === true ? 'true' : 'false',
       statusPag, fmtNum(value), fmtNum(openValue),
       excl ? '' : fmtNum(vContado),
       fmtDate(datePay), fmtDate(dateDue), fmtDate(dateSch),
@@ -1852,13 +1959,13 @@ function exportarJaneiro() {
   const niboTotal = 39882.07;
   const diff = totalContado - niboTotal;
   linhas.push(csvRow([]));
-  linhas.push(csvRow(['','','','','','','','TOTAL DASH',   fmtNum(totalContado),'','','','','','']));
-  linhas.push(csvRow(['','','','','','','','TOTAL NIBO',   '39882,07',          '','','','','','']));
-  linhas.push(csvRow(['','','','','','','','DIFERENÇA',    fmtNum(diff),        '','','','','','']));
+  linhas.push(csvRow(['','','','','','','','','TOTAL DASH',   fmtNum(totalContado),'','','','','','']));
+  linhas.push(csvRow(['','','','','','','','','TOTAL NIBO',   '39882,07',          '','','','','','']));
+  linhas.push(csvRow(['','','','','','','','','DIFERENÇA',    fmtNum(diff),        '','','','','','']));
   linhas.push(csvRow([]));
-  linhas.push(csvRow(['','','','','','','','Itens contados',  countContado, '','','','','','']));
-  linhas.push(csvRow(['','','','','','','','Itens excluidos', countExcl,    '','','','','','']));
-  linhas.push(csvRow(['','','','','','','','Total API',       RAW_CREDITS.length,'','','','','','']));
+  linhas.push(csvRow(['','','','','','','','','Itens contados',  countContado, '','','','','','']));
+  linhas.push(csvRow(['','','','','','','','','Itens excluidos', countExcl,    '','','','','','']));
+  linhas.push(csvRow(['','','','','','','','','Total API',       RAW_CREDITS.length,'','','','','','']));
 
   const bom = '﻿';
   const csv = bom + linhas.join('\r\n');
