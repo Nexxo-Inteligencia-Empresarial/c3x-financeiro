@@ -779,59 +779,41 @@ async function carregarNibo() {
   console.log('[Nibo] Total débitos:', debitData.items.length, '| pagos:', debitData.items.filter(i=>i.isPaid).length);
   loaderEl.textContent = 'Processando...';
 
-  // === DIAGNÓSTICO FINAL: individual record + endpoints alternativos ===
+  // === DIAGNÓSTICO: nova API api-empresa.nibo.com.br ===
   (async () => {
     try {
-      // Pegar um item Asaas pago em atraso (dueDate 2025, pago em 2026)
-      const atrasado = (creditData.items||[]).find(i =>
-        i.isPaid === true && !i.isEntry && !i.paymentDate &&
-        i.dueDate && new Date(i.dueDate).getFullYear() === 2025
-      );
-      const sid = atrasado?.scheduleId || atrasado?.id;
-      console.log('[Diag] Item em atraso escolhido:', atrasado?.description, '| dueDate:', atrasado?.dueDate?.substring(0,10), '| updateDate:', atrasado?.updateDate?.substring(0,10));
+      const tk = encodeURIComponent(TOKEN);
 
-      // 1. Buscar registro individual — pode ter mais campos
-      if (sid) {
-        const r1 = await fetch(`/api/nibo?token=${encodeURIComponent(TOKEN)}&endpoint=${encodeURIComponent('schedules/credit/'+sid)}`);
-        const d1 = await r1.json();
-        console.log('[Diag] GET schedules/credit/{id} — status:', r1.status);
-        if (r1.ok) {
-          console.log('  Campos extras vs lista:', Object.keys(d1).filter(k => !atrasado || !(k in atrasado)));
-          console.log('  paymentDate:', d1.paymentDate||'(vazio)');
-          console.log('  settledDate:', d1.settledDate||'(vazio)');
-          console.log('  paidDate:', d1.paidDate||'(vazio)');
-          console.log('  receiptDate:', d1.receiptDate||'(vazio)');
-          console.log('  Todos os campos:', Object.keys(d1).join(', '));
-        } else { console.log('  Resposta:', JSON.stringify(d1).slice(0,200)); }
-      }
-
-      // 2. Testar endpoints completamente diferentes
-      const eps2 = [
-        'schedules/credit/receipts',
-        'receipts',
-        'payments',
-        'baixas',
-        'liquidations',
-        'schedulereceipts',
-        'schedule-receipts',
-        'financialMovements',
-        'bankstatements',
-        'bankStatement',
+      // 1. Testar endpoints na nova base URL (api-empresa.nibo.com.br)
+      const epsEmpresa = [
+        'entries',
+        'schedules/credit/entries',
+        'schedules/entries',
+        'credit/entries',
+        'financialentries',
+        'schedules',
+        'reports/entries',
+        'reports/received',
+        'contas/recebidas',
       ];
-      console.log('[Diag] Testando outros endpoints:');
-      for (const ep of eps2) {
-        const r = await fetch(`/api/nibo?token=${encodeURIComponent(TOKEN)}&endpoint=${encodeURIComponent(ep)}&%24top=2`);
+      console.log('[Diag] Testando api-empresa.nibo.com.br:');
+      for (const ep of epsEmpresa) {
+        const r = await fetch(`/api/nibo?token=${tk}&base=empresa&endpoint=${encodeURIComponent(ep)}&%24top=2`);
         const d = await r.json();
-        const ok = r.status !== 404 && r.status !== 405;
-        if (ok) console.log(`  ✓ ${ep}: status=${r.status} | campos=${d.items?.[0] ? Object.keys(d.items[0]).join(',') : JSON.stringify(d).slice(0,120)}`);
-        else    console.log(`  ✗ ${ep}: ${r.status}`);
+        if (r.status !== 404 && r.status !== 405 && r.status !== 401) {
+          const campos = d.items?.[0] ? Object.keys(d.items[0]).join(', ') : JSON.stringify(d).slice(0,150);
+          console.log(`  ✓ ${ep}: status=${r.status} | ${campos}`);
+        } else {
+          console.log(`  ✗ ${ep}: ${r.status}`);
+        }
       }
 
-      // 3. Ver se scheduleId do item pago via Asaas aparece em isEntry=true com dueDate 2026
-      if (sid) {
-        const espelho = (creditData.items||[]).find(i => i.isEntry === true && i.scheduleId === sid);
-        console.log('[Diag] isEntry=true para o mesmo scheduleId:', espelho ? `ENCONTRADO — dueDate: ${espelho.dueDate?.substring(0,10)}` : 'NÃO ENCONTRADO');
-      }
+      // 2. Também testar com filtro de mês para ver se retorna paymentDate
+      const epFiltrado = `entries?$filter=month(paymentDate) eq 1 and year(paymentDate) eq 2026&$top=2`;
+      const rF = await fetch(`/api/nibo?token=${tk}&base=empresa&endpoint=${encodeURIComponent('entries')}&%24filter=${encodeURIComponent('month(paymentDate) eq 1 and year(paymentDate) eq 2026')}&%24top=2`);
+      const dF = await rF.json();
+      console.log('[Diag] entries com filtro paymentDate jan/2026:', rF.status, dF.items?.length ?? JSON.stringify(dF).slice(0,100));
+
     } catch(e) {
       console.warn('[Diag] Erro:', e.message);
     }

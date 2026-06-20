@@ -4,22 +4,29 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const { token, endpoint } = req.query;
+  const { token, endpoint, base } = req.query;
   if (!token || !endpoint) {
     return res.status(400).json({ error: 'token e endpoint obrigatorios' });
   }
 
-  // Decodifica endpoint (ex: schedules%2Fcredit -> schedules/credit)
   const decodedEndpoint = decodeURIComponent(endpoint);
 
-  // Monta params sem token e endpoint
   const rawQuery = req.url.split('?')[1] || '';
   const params = new URLSearchParams(rawQuery);
   params.delete('token');
   params.delete('endpoint');
-  params.set('apitoken', token);
+  params.delete('base');
 
-  const niboUrl = `https://api.nibo.com.br/empresas/v1/${decodedEndpoint}?${params.toString()}`;
+  let niboUrl;
+  if (base === 'empresa') {
+    // API interna do Nibo web app: api-empresa.nibo.com.br
+    params.set('apitoken', token);
+    niboUrl = `https://api-empresa.nibo.com.br/${decodedEndpoint}?${params.toString()}`;
+  } else {
+    // API pública padrão
+    params.set('apitoken', token);
+    niboUrl = `https://api.nibo.com.br/empresas/v1/${decodedEndpoint}?${params.toString()}`;
+  }
 
   try {
     const response = await fetch(niboUrl, {
@@ -30,7 +37,7 @@ module.exports = async function handler(req, res) {
       const data = JSON.parse(text);
       return res.status(response.status).json(data);
     } catch(e) {
-      return res.status(500).json({ error: 'Parse error', niboStatus: response.status, body: text.substring(0, 300) });
+      return res.status(500).json({ error: 'Parse error', niboStatus: response.status, body: text.substring(0, 500) });
     }
   } catch (err) {
     return res.status(500).json({ error: err.message });
