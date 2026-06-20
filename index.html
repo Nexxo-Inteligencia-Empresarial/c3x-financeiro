@@ -778,26 +778,18 @@ async function carregarNibo() {
   // REGIME DE CAIXA: conta o valor efetivamente recebido = value - openValue
   // Cobre: pagamento total (openValue=0), parcial (openValue<value), e isPaid=true
   let _cSkipNaoPago=0, _cSkipAno=0, _cContado=0;
-  const _cAmostraExcluidos=[];
+  const _janItens=[];
   for (const item of (creditData.items||[])) {
     const v = Math.abs(item.value||0) - Math.abs(item.openValue||0);
-    if (v <= 0) { _cSkipNaoPago++; continue; } // nada recebido ainda
+    if (v <= 0) { _cSkipNaoPago++; continue; }
     const d = item.paymentDate || item.dueDate || item.scheduleDate;
     if (!d) continue;
     const dt = new Date(d);
-    if (dt.getFullYear()!==2026) {
-      _cSkipAno++;
-      if (_cAmostraExcluidos.length < 8) _cAmostraExcluidos.push(
-        `v=${v.toFixed(2)} pay=${item.paymentDate||'null'} due=${item.dueDate} cat=${item.categories?.[0]?.categoryName||''}`
-      );
-      continue;
-    }
+    if (dt.getFullYear()!==2026) { _cSkipAno++; continue; }
     _cContado++;
     const m = dt.getMonth();
     REAL.receita[m] += v;
-
-    // Log detalhado de janeiro para diagnóstico
-    if (m === 0) console.log(`[Jan crédito] v=${v.toFixed(2)} pay=${item.paymentDate||'null'} due=${item.dueDate} cat=${item.categories?.[0]?.categoryName||''} desc=${(item.description||'').slice(0,35)}`);
+    if (m === 0) _janItens.push({ v: +v.toFixed(2), pay: item.paymentDate||null, due: item.dueDate, cat: item.categories?.[0]?.categoryName||'', desc: (item.description||'').slice(0,40) });
 
     // Por categoria de receita (Escola, Prime, Eventos, Clube dos Sócios, C3X)
     const cat = item.categories?.[0]?.categoryName || item.categoryName || '';
@@ -815,7 +807,9 @@ async function carregarNibo() {
     // Clube dos Sócios, C3X, Juros — somam apenas na receita total
   }
   console.log('[Créditos] Contados:', _cContado, '| Sem valor recebido:', _cSkipNaoPago, '| Ano≠2026:', _cSkipAno);
-  if (_cAmostraExcluidos.length) console.log('[Créditos excluídos por ano]', _cAmostraExcluidos.join('\n'));
+  const _janTotal = _janItens.reduce((s,i)=>s+i.v,0);
+  console.log(`[Jan] ${_janItens.length} itens | Total: R$${_janTotal.toFixed(2)}`);
+  console.table(_janItens);
 
   // Log do primeiro débito para diagnóstico de campos
   if (debitData.items?.length > 0) {
