@@ -779,40 +779,41 @@ async function carregarNibo() {
   console.log('[Nibo] Total débitos:', debitData.items.length, '| pagos:', debitData.items.filter(i=>i.isPaid).length);
   loaderEl.textContent = 'Processando...';
 
-  // === DIAGNÓSTICO: nova API api-empresa.nibo.com.br ===
+  // === DIAGNÓSTICO: api-empresa.nibo.com.br/{orgId}/entries ===
   (async () => {
     try {
-      const tk = encodeURIComponent(TOKEN);
+      const tk  = encodeURIComponent(TOKEN);
+      const org = 'e0a0256d-0f98-445f-b3c5-bf4727b6c722';
 
-      // 1. Testar endpoints na nova base URL (api-empresa.nibo.com.br)
-      const epsEmpresa = [
-        'entries',
-        'schedules/credit/entries',
-        'schedules/entries',
-        'credit/entries',
-        'financialentries',
-        'schedules',
-        'reports/entries',
-        'reports/received',
-        'contas/recebidas',
-      ];
-      console.log('[Diag] Testando api-empresa.nibo.com.br:');
-      for (const ep of epsEmpresa) {
-        const r = await fetch(`/api/nibo?token=${tk}&base=empresa&endpoint=${encodeURIComponent(ep)}&%24top=2`);
-        const d = await r.json();
-        if (r.status !== 404 && r.status !== 405 && r.status !== 401) {
-          const campos = d.items?.[0] ? Object.keys(d.items[0]).join(', ') : JSON.stringify(d).slice(0,150);
-          console.log(`  ✓ ${ep}: status=${r.status} | ${campos}`);
-        } else {
-          console.log(`  ✗ ${ep}: ${r.status}`);
-        }
+      // 1. Buscar 3 entradas sem filtro — ver campos disponíveis
+      const r1 = await fetch(`/api/nibo?token=${tk}&base=empresa&endpoint=${encodeURIComponent(org+'/entries')}&%24top=3`);
+      const d1 = await r1.json();
+      console.log('[Diag] GET /{orgId}/entries — status:', r1.status);
+      if (Array.isArray(d1) && d1.length) {
+        const item = d1[0];
+        console.log('[Diag] Campos do 1º item:', Object.keys(item).join(', '));
+        console.log('[Diag] paymentDate:', item.paymentDate||item.paidDate||item.receiptDate||item.settledDate||'(não encontrado)');
+        console.log('[Diag] dueDate:', item.dueDate||'—');
+        console.log('[Diag] type:', item.type||item.entryType||'—');
+        console.log('[Diag] value:', item.value||item.amount||'—');
+        console.log('[Diag] Item completo:', item);
+      } else {
+        console.log('[Diag] Resposta não é array ou vazia:', JSON.stringify(d1).slice(0,300));
       }
 
-      // 2. Também testar com filtro de mês para ver se retorna paymentDate
-      const epFiltrado = `entries?$filter=month(paymentDate) eq 1 and year(paymentDate) eq 2026&$top=2`;
-      const rF = await fetch(`/api/nibo?token=${tk}&base=empresa&endpoint=${encodeURIComponent('entries')}&%24filter=${encodeURIComponent('month(paymentDate) eq 1 and year(paymentDate) eq 2026')}&%24top=2`);
-      const dF = await rF.json();
-      console.log('[Diag] entries com filtro paymentDate jan/2026:', rF.status, dF.items?.length ?? JSON.stringify(dF).slice(0,100));
+      // 2. Testar filtro por mês de pagamento (como o Nibo filtra internamente)
+      const filtros = [
+        `type eq 'Credit' and year(paymentDate) eq 2026 and month(paymentDate) eq 1`,
+        `year(paymentDate) eq 2026 and month(paymentDate) eq 1`,
+        `year(dueDate) eq 2026 and month(dueDate) eq 1`,
+        `entryType eq 'Credit'`,
+      ];
+      for (const f of filtros) {
+        const r = await fetch(`/api/nibo?token=${tk}&base=empresa&endpoint=${encodeURIComponent(org+'/entries')}&%24filter=${encodeURIComponent(f)}&%24top=2`);
+        const d = await r.json();
+        const n = Array.isArray(d) ? d.length : (d.items?.length ?? `ERR:${r.status}`);
+        console.log(`[Diag] filtro "${f.slice(0,50)}..." → status ${r.status} | ${n} itens`);
+      }
 
     } catch(e) {
       console.warn('[Diag] Erro:', e.message);
