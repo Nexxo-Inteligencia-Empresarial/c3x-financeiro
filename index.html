@@ -813,6 +813,9 @@ async function carregarNibo() {
 
   // Investimentos/distribuições: não entram no Resultado Operacional
   const ehInvestimento = cat => /adiantamento de lucros|equipamentos|utensílio/i.test(cat);
+  // Deduções de receita (comissões): reduzem receita bruta → receita líquida igual ao Nibo
+  // Não entram em REAL.despesa para não distorcer o resultado (já é abatido na receita)
+  const ehDeducaoReceita = cat => /dedução da receita|deducao da receita/i.test(cat);
 
   // REGIME DE CAIXA: despesas — contar apenas o que foi efetivamente pago
   for (const item of (debitData.items||[])) {
@@ -831,10 +834,18 @@ async function carregarNibo() {
     if (!REAL.categorias[cat]) REAL.categorias[cat] = Array(12).fill(0);
     REAL.categorias[cat][m] += v;
 
-    // Soma no resultado operacional apenas se for despesa operacional (não investimento)
-    if (!ehInvestimento(cat)) {
+    if (ehDeducaoReceita(cat)) {
+      // Abate da receita bruta para exibir receita líquida (igual ao painel Nibo)
+      REAL.receita[m] -= v;
+      const catL = cat.toLowerCase();
+      if (catL.includes('escola') || catL.includes('sócio')) REAL.escola[m] -= v;
+      else if (catL.includes('prime')) REAL.prime[m] -= v;
+      else if (catL.includes('destrava')) REAL.destrava[m] -= v;
+    } else if (!ehInvestimento(cat)) {
+      // Despesa operacional normal
       REAL.despesa[m] += v;
     }
+    // Investimentos (Adiantamento de Lucros etc.) ficam só em REAL.categorias
   }
 
   // Log para diagnóstico de categorias encontradas
