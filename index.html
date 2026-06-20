@@ -796,6 +796,9 @@ async function carregarNibo() {
     const m = dt.getMonth();
     REAL.receita[m] += v;
 
+    // Log detalhado de janeiro para diagnóstico
+    if (m === 0) console.log(`[Jan crédito] v=${v.toFixed(2)} pay=${item.paymentDate||'null'} due=${item.dueDate} cat=${item.categories?.[0]?.categoryName||''} desc=${(item.description||'').slice(0,35)}`);
+
     // Por categoria de receita (Escola, Prime, Eventos, Clube dos Sócios, C3X)
     const cat = item.categories?.[0]?.categoryName || item.categoryName || '';
     const catL = cat.toLowerCase();
