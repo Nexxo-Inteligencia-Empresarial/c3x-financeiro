@@ -5,10 +5,9 @@ module.exports = async function handler(req, res) {
 
   const base = `https://api.nibo.com.br/empresas/v1`;
   const h = { 'Accept': 'application/json' };
-  const tk = `apitoken=${token}`;
 
   async function nibo(endpoint, filter) {
-    const url = `${base}/${endpoint}?${tk}&$top=500&$filter=${encodeURIComponent(filter)}`;
+    const url = `${base}/${endpoint}?apitoken=${token}&$top=500&$filter=${filter}`;
     const r = await fetch(url, { headers: h });
     const data = await r.json();
     return { status: r.status, items: data.items || [], erro: data.message || null };
@@ -17,7 +16,7 @@ module.exports = async function handler(req, res) {
   try {
     const results = {};
 
-    // A: filtro atual por dueDate janeiro — deve retornar o que já conhecemos
+    // A: filtro atual por dueDate janeiro
     const a = await nibo('schedules/credit', 'year(dueDate) eq 2026 AND month(dueDate) eq 1');
     results.A_dueDate_jan = {
       status: a.status, qtd: a.items.length, erro: a.erro,
@@ -32,15 +31,17 @@ module.exports = async function handler(req, res) {
       total: b.items.reduce((s,i)=>s+Math.abs(i.value||0),0).toFixed(2),
     };
 
-    // C: todos de 2026 pagos — quantos têm paymentDate preenchido?
+    // C: todos pagos de 2026 — quantos têm paymentDate preenchido?
     const c = await nibo('schedules/credit', 'isPaid eq true AND year(dueDate) eq 2026');
     const comPay = c.items.filter(i=>i.paymentDate);
-    const semPay = c.items.filter(i=>!i.paymentDate);
     results.C_pagos2026 = {
       status: c.status, qtd: c.items.length, erro: c.erro,
       comPaymentDate: comPay.length,
-      semPaymentDate: semPay.length,
-      exemploComPaymentDate: comPay[0] ? { desc: comPay[0].description, dueDate: comPay[0].dueDate, paymentDate: comPay[0].paymentDate, value: comPay[0].value } : null,
+      semPaymentDate: c.items.filter(i=>!i.paymentDate).length,
+      exemploComPaymentDate: comPay[0] ? {
+        desc: comPay[0].description, dueDate: comPay[0].dueDate,
+        paymentDate: comPay[0].paymentDate, value: comPay[0].value
+      } : null,
     };
 
     return res.status(200).json(results);
