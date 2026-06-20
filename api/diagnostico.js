@@ -7,7 +7,7 @@ module.exports = async function handler(req, res) {
   const h = { 'Accept': 'application/json' };
 
   async function nibo(endpoint, filter) {
-    const url = `${base}/${endpoint}?apitoken=${token}&$top=500&$filter=${filter}`;
+    const url = `${base}/${endpoint}?apitoken=${encodeURIComponent(token)}&$top=500&$filter=${filter}`;
     const r = await fetch(url, { headers: h });
     const data = await r.json();
     return { status: r.status, items: data.items || [], erro: data.message || null };
