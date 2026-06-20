@@ -670,18 +670,19 @@ const PROJ_CAT = {
 let RAW_CREDITS = [];
 
 // Regime de caixa: data real de recebimento de um crédito.
-// isEntry=true → lançamento bancário real; dueDate = data do movimento.
-// isPaid=true, dueDate anterior a 2026 → pago em atraso; updateDate é o melhor proxy disponível
-//   (o Nibo não expõe paymentDate via schedules/credit para itens Asaas).
-// isPaid=true, dueDate em 2026 → pago próximo ao vencimento; dueDate é boa aproximação.
-// não pago → dueDate (projeção).
+// O Nibo não expõe paymentDate para itens pagos via Asaas no endpoint schedules/credit.
+// Estratégia: max(dueDate, updateDate).
+//   • Pago em dia (updateDate = criação < dueDate) → usa dueDate ✓
+//   • Pago em atraso (updateDate = registro > dueDate) → usa updateDate ✓
+//   • isEntry=true (lançamento bancário real) → dueDate = data do crédito ✓
 function _dataCaixa(item) {
   if (item.isEntry === true) return item.dueDate || item.scheduleDate || '';
   if (item.isPaid === true) {
     if (item.paymentDate) return item.paymentDate;
-    const dueYear = item.dueDate ? new Date(item.dueDate).getFullYear() : 9999;
-    if (dueYear < 2026 && item.updateDate) return item.updateDate;
-    return item.dueDate || item.scheduleDate || '';
+    const due    = item.dueDate    ? new Date(item.dueDate)    : null;
+    const update = item.updateDate ? new Date(item.updateDate) : null;
+    if (due && update) return due >= update ? item.dueDate : item.updateDate;
+    return item.dueDate || item.updateDate || item.scheduleDate || '';
   }
   return item.dueDate || item.scheduleDate || '';
 }
