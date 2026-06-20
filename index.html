@@ -668,9 +668,23 @@ const PROJ_CAT = {
    DADOS REALIZADOS (do Nibo via API)
 ═══════════════════════════════════════════ */
 let RAW_CREDITS = [];
-// Mapa scheduleId → dueDate para lançamentos bancários reais (isEntry=true) do Asaas.
-// Construído em carregarNibo() e reutilizado em carregarCentrosCusto().
-let _MAPA_ENTRADA_CREDITO = {};
+
+// Regime de caixa: data real de recebimento de um crédito.
+// isEntry=true → lançamento bancário real; dueDate = data do movimento.
+// isPaid=true, dueDate anterior a 2026 → pago em atraso; updateDate é o melhor proxy disponível
+//   (o Nibo não expõe paymentDate via schedules/credit para itens Asaas).
+// isPaid=true, dueDate em 2026 → pago próximo ao vencimento; dueDate é boa aproximação.
+// não pago → dueDate (projeção).
+function _dataCaixa(item) {
+  if (item.isEntry === true) return item.dueDate || item.scheduleDate || '';
+  if (item.isPaid === true) {
+    if (item.paymentDate) return item.paymentDate;
+    const dueYear = item.dueDate ? new Date(item.dueDate).getFullYear() : 9999;
+    if (dueYear < 2026 && item.updateDate) return item.updateDate;
+    return item.dueDate || item.scheduleDate || '';
+  }
+  return item.dueDate || item.scheduleDate || '';
+}
 
 let REAL = {
   receita:  Array(12).fill(0),
@@ -775,15 +789,6 @@ async function carregarNibo() {
   console.log('[Nibo] Total débitos:', debitData.items.length, '| pagos:', debitData.items.filter(i=>i.isPaid).length);
   loaderEl.textContent = 'Processando...';
 
-  // Construir mapa global de lançamentos bancários reais (isEntry=true) por scheduleId.
-  // Feito aqui para estar disponível tanto em carregarCentrosCusto quanto no loop principal.
-  _MAPA_ENTRADA_CREDITO = {};
-  for (const item of (creditData.items||[])) {
-    if (item.isEntry === true && item.scheduleId && item.dueDate) {
-      _MAPA_ENTRADA_CREDITO[item.scheduleId] = item.dueDate;
-    }
-  }
-
   document.getElementById('loader-label').textContent = 'Processando centros de custo...';
   await carregarCentrosCusto(creditData, debitData);
   document.getElementById('loader-label').textContent = 'Processando receitas...';
@@ -793,102 +798,24 @@ async function carregarNibo() {
   REAL.despesa  = Array(12).fill(0);
   REAL.categorias = {};
 
-  // REGIME DE CAIXA — lógica de data de recebimento:
-  //
-  // O endpoint schedules/credit mistura dois tipos de registro:
-  //   isEntry=true  → lançamento bancário real (Asaas ou importação): dueDate = data real do crédito
-  //   isEntry=false → agendamento criado manualmente:
-  //       • baixa manual → paymentDate preenchido = data real
-  //       • pago via Asaas → paymentDate=null; o Nibo cria um registro isEntry=true
-  //         separado com dueDate = data real. Esse registro possui scheduleId apontando
-  //         para o agendamento original, ou o agendamento possui o mesmo scheduleId.
-  //
-  // Estratégia:
-  //   1. Construir mapa scheduleId → dueDate de todos os isEntry=true (lançamentos reais).
-  //   2. Para isEntry=true → dueDate é a data real (não usar paymentDate/updateDate).
-  //   3. Para isEntry=false, isPaid=true → paymentDate (baixa manual) OU
-  //      mapa[scheduleId] (Asaas/isEntry=true correspondente) OU dueDate (fallback).
-  //   4. Para isEntry=false, isPaid=false/parcial → dueDate (competência, projeção).
-
-  // Passo 2: pré-computar set de scheduleIds com agendamento pago (isEntry=false, isPaid=true)
-  // _MAPA_ENTRADA_CREDITO já foi preenchido antes de carregarCentrosCusto (escopo de módulo).
-  //
-  // _schedulesComAgendamento: usado para evitar dupla contagem quando um isEntry=true
-  // é o lançamento bancário de um agendamento isEntry=false que também está na lista.
-  const _schedulesComAgendamento = new Set();
+  // REGIME DE CAIXA — créditos
   for (const item of (creditData.items||[])) {
-    if (item.isEntry !== true && item.isPaid === true && item.scheduleId) {
-      _schedulesComAgendamento.add(item.scheduleId);
-    }
-  }
-  console.log('[Nibo] Entradas Asaas com scheduleId:', Object.keys(_MAPA_ENTRADA_CREDITO).length,
-    '| Agendamentos pagos com scheduleId:', _schedulesComAgendamento.size);
-
-  // Diagnóstico: isEntry=true por mês de 2026
-  const _entryPorMes = {};
-  for (const item of (creditData.items||[])) {
-    if (item.isEntry !== true) continue;
-    const dt = item.dueDate ? new Date(item.dueDate) : null;
-    if (!dt || dt.getFullYear() !== 2026) continue;
-    const m = dt.getMonth();
-    if (!_entryPorMes[m]) _entryPorMes[m] = { count:0, total:0, items:[] };
-    _entryPorMes[m].count++;
-    _entryPorMes[m].total += Math.abs(item.value||0);
-    if (m === 0) _entryPorMes[m].items.push({ desc: item.description, stake: item.stakeholder?.name, val: item.value, scheduleId: item.scheduleId });
-  }
-  const meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-  console.log('[Nibo] isEntry=true por mês 2026:');
-  Object.entries(_entryPorMes).forEach(([m,d]) => console.log(`  ${meses[m]}: ${d.count} itens | R$ ${d.total.toFixed(2)}`));
-  if (_entryPorMes[0]) { console.log('[Nibo] isEntry=true Janeiro — detalhes:'); console.table(_entryPorMes[0].items); }
-
-  // Helper: retorna a data de caixa correta para um item de crédito.
-  // Usa _MAPA_ENTRADA_CREDITO (escopo de módulo) para lookup do lançamento Asaas.
-  function _dataCaixaCredito(item) {
-    if (item.isEntry === true) {
-      // Lançamento bancário real (Asaas/importado): dueDate = data do movimento bancário
-      return item.dueDate || item.scheduleDate;
-    }
-    if (item.isPaid === true) {
-      // Agendamento pago: paymentDate (baixa manual) > data do lançamento Asaas > dueDate
-      return item.paymentDate
-        || (item.scheduleId && _MAPA_ENTRADA_CREDITO[item.scheduleId])
-        || item.dueDate
-        || item.scheduleDate;
-    }
-    // Não pago / parcialmente pago: usa dueDate (data de vencimento / competência)
-    return item.dueDate || item.scheduleDate;
-  }
-
-  // isPaid=true → value inteiro; senão → value - openValue (parcialmente recebido)
-  let _cSkipNaoPago=0, _cSkipAno=0, _cContado=0;
-  for (const item of (creditData.items||[])) {
-    // Evitar dupla contagem: isEntry=true com scheduleId que já tem agendamento (isEntry=false)
-    // pago — o agendamento será contado com a data correta via _MAPA_ENTRADA_CREDITO.
-    // Se isEntry=true sem agendamento correspondente, é receita avulsa: contar diretamente.
-    if (item.isEntry === true && item.scheduleId && _schedulesComAgendamento.has(item.scheduleId)) {
-      continue; // espelho do agendamento, será contado pelo isEntry=false
-    }
-
     const isPaidTrue = item.isPaid === true || item.isEntry === true;
     const v = isPaidTrue
       ? Math.abs(item.value||0)
       : Math.abs(item.value||0) - Math.abs(item.openValue||0);
-    if (v <= 0) { _cSkipNaoPago++; continue; }
-    // Regime de caixa: data real de recebimento
-    const d = _dataCaixaCredito(item);
+    if (v <= 0) continue;
+    const d = _dataCaixa(item);
     if (!d) continue;
     const dt = new Date(d);
-    if (dt.getFullYear()!==2026) { _cSkipAno++; continue; }
-    _cContado++;
+    if (dt.getFullYear() !== 2026) continue;
     const m = dt.getMonth();
     REAL.receita[m] += v;
 
-    // Por categoria de receita (Escola, Prime, Eventos, Clube dos Sócios, C3X)
-    const cat = item.categories?.[0]?.categoryName || item.categoryName || '';
+    const cat  = item.categories?.[0]?.categoryName || item.categoryName || '';
     const catL = cat.toLowerCase();
     const desc = (item.description||'').toLowerCase();
     const stake = (item.stakeholder?.name||'').toLowerCase();
-    // "Escola de Sócios" — exclui "Clube dos Sócios" para não colidir
     if ((catL.includes('escola') || desc.includes('escola de sócio')) && !catL.includes('clube')) {
       REAL.escola[m] += v;
     } else if (catL.includes('prime') || desc.includes('prime') || catL.includes('mentoria c3x') || stake.includes('prime')) {
@@ -896,44 +823,7 @@ async function carregarNibo() {
     } else if (catL.includes('destrava') || desc.includes('destrava') || catL.includes('fora do cardápio') || catL.includes('summit') || catL.includes('evento')) {
       REAL.destrava[m] += v;
     }
-    // Clube dos Sócios, C3X, Juros — somam apenas na receita total
   }
-
-  // === DIAGNÓSTICO JANEIRO — aparece no console (F12) após carregar ===
-  const _janItems = (creditData.items||[]).map(item => {
-    const isEspelho = item.isEntry === true && item.scheduleId && _schedulesComAgendamento.has(item.scheduleId);
-    const isPaidTrue = item.isPaid === true || item.isEntry === true;
-    const value     = Math.abs(item.value||0);
-    const openValue = Math.abs(item.openValue||0);
-    const v = isPaidTrue ? value : value - openValue;
-    const dateUsed = _dataCaixaCredito(item) || '';
-    const dt = dateUsed ? new Date(dateUsed) : null;
-    const conta = !isEspelho && v > 0 && dt && dt.getFullYear()===2026 && dt.getMonth()===0;
-    return {
-      descricao:    item.description || '',
-      stakeholder:  item.stakeholder?.name || '',
-      categoria:    item.categories?.[0]?.categoryName || item.categoryName || '',
-      isEntry:      item.isEntry,
-      isPaid:       item.isPaid,
-      scheduleId:   item.scheduleId||'',
-      value:        value.toFixed(2),
-      openValue:    openValue.toFixed(2),
-      v_contado:    conta ? v.toFixed(2) : '',
-      paymentDate:  (item.paymentDate||'').substring(0,10),
-      dueDate:      (item.dueDate||'').substring(0,10),
-      data_usada:   dateUsed.substring(0,10),
-      status:       isEspelho ? 'SKIP:espelho-asaas' : conta ? 'CONTA' : (v<=0 ? 'EXCL:v=0' : !dt ? 'EXCL:sem-data' : dt.getFullYear()!==2026 ? `EXCL:ano=${dt.getFullYear()}` : `EXCL:mes=${dt.getMonth()+1}`)
-    };
-  });
-  const _janContam = _janItems.filter(i=>i.status==='CONTA');
-  const _janTotal  = _janContam.reduce((s,i)=>s+parseFloat(i.v_contado),0);
-  console.log(`\n=== RECEITA JANEIRO 2026 ===`);
-  console.log(`Total dashboard: R$ ${_janTotal.toFixed(2)}  |  Total Nibo: R$ 39882.07  |  Diferença: R$ ${(_janTotal-39882.07).toFixed(2)}`);
-  console.log(`Itens que CONTAM (${_janContam.length}):`);
-  console.table(_janContam.map(i=>({descricao:i.descricao, stakeholder:i.stakeholder, categoria:i.categoria, isEntry:i.isEntry, isPaid:i.isPaid, scheduleId:i.scheduleId, value:i.value, v_contado:i.v_contado, paymentDate:i.paymentDate, dueDate:i.dueDate, data_usada:i.data_usada})));
-  console.log(`\n=== ITENS PULADOS (espelho Asaas) ===`);
-  console.table(_janItems.filter(i=>i.status==='SKIP:espelho-asaas').map(i=>({descricao:i.descricao,scheduleId:i.scheduleId,dueDate:i.dueDate,value:i.value})));
-  // === FIM DIAGNÓSTICO ===
 
   // Investimentos/distribuições: não entram no Resultado Operacional
   const ehInvestimento = cat => /adiantamento de lucros|equipamentos|utensílio/i.test(cat);
@@ -1198,35 +1088,19 @@ async function carregarCentrosCusto(creditData, debitData) {
   const hoje = new Date();
   CC_INADIM = {};
 
-  // Set de scheduleIds com agendamento pago — para evitar dupla contagem com isEntry=true
-  const _ccSchedulesComAgendamento = new Set();
   for (const item of (creditData.items||[])) {
-    if (item.isEntry !== true && item.isPaid === true && item.scheduleId) {
-      _ccSchedulesComAgendamento.add(item.scheduleId);
-    }
-  }
-
-  for (const item of (creditData.items||[])) {
-    // Pular isEntry=true que é espelho de agendamento (evita dupla contagem)
-    if (item.isEntry === true && item.scheduleId && _ccSchedulesComAgendamento.has(item.scheduleId)) continue;
-
     const ccs = item.costCenters || [];
     if (ccs.length === 0) continue;
-    const dueDate = new Date(item.dueDate);
-    const anoItem = dueDate.getFullYear();
-    if (anoItem !== 2026) continue;
-    const v = Math.abs(item.value||0);
+    const v    = Math.abs(item.value||0);
     const openV = Math.abs(item.openValue||0);
 
     for (const cc of ccs) {
       const nome = cc.costCenterDescription || cc.description || cc.name || 'Outros';
 
-      // Receita caixa: só contar se pago, usando data real (paymentDate > Asaas > dueDate)
+      // Receita caixa: só contar se pago, usando data real de recebimento
       if (item.isPaid === true || item.isEntry === true) {
-        const dataReal = item.isEntry === true
-          ? (item.dueDate || item.scheduleDate)
-          : (item.paymentDate || (item.scheduleId && _MAPA_ENTRADA_CREDITO[item.scheduleId]) || item.dueDate || item.scheduleDate);
-        const payDate = dataReal ? new Date(dataReal) : null;
+        const dataReal = _dataCaixa(item);
+        const payDate  = dataReal ? new Date(dataReal) : null;
         if (payDate && payDate.getFullYear() === 2026) {
           const mesPago = payDate.getMonth();
           if (!CC_RECEITA[nome]) CC_RECEITA[nome] = Array(12).fill(0);
@@ -1234,8 +1108,9 @@ async function carregarCentrosCusto(creditData, debitData) {
         }
       }
 
-      // Inadimplência: não pago + vencido
-      if (!item.isPaid && dueDate < hoje && openV > 0) {
+      // Inadimplência: não pago + vencido em 2026
+      const dueDate = item.dueDate ? new Date(item.dueDate) : null;
+      if (!item.isPaid && dueDate && dueDate < hoje && openV > 0 && dueDate.getFullYear() === 2026) {
         if (!CC_INADIM[nome]) CC_INADIM[nome] = { total: 0, porMes: Array(12).fill(0) };
         CC_INADIM[nome].total += openV;
         CC_INADIM[nome].porMes[dueDate.getMonth()] += openV;
@@ -1906,29 +1781,9 @@ function exportarJaneiro() {
   const header = ['#','ID','Descrição','Stakeholder','Categoria','isEntry','isPaid','value','openValue','V_Contado','paymentDate','dueDate','scheduleDate','DataUsada','CampoData','Status'];
   const linhas = [csvRow(header)];
 
-  // Set de scheduleIds com agendamento pago (para detectar espelhos Asaas)
-  const _expSchedulesComAgend = new Set();
-  RAW_CREDITS.forEach(item => {
-    if (item.isEntry !== true && item.isPaid === true && item.scheduleId) _expSchedulesComAgend.add(item.scheduleId);
-  });
-
-  // Função de data de caixa consistente com carregarNibo (usa _MAPA_ENTRADA_CREDITO global)
-  const _expDataCaixa = item => {
-    if (item.isEntry === true) return item.dueDate || item.scheduleDate || '';
-    if (item.isPaid === true) {
-      return item.paymentDate
-        || (item.scheduleId && _MAPA_ENTRADA_CREDITO[item.scheduleId])
-        || item.dueDate || item.scheduleDate || '';
-    }
-    return item.dueDate || item.scheduleDate || '';
-  };
-
   let totalContado = 0, countContado = 0, countExcl = 0;
 
   RAW_CREDITS.forEach((item, idx) => {
-    // Espelhos Asaas: pulados no dashboard — marcar como excluído no CSV também
-    const isEspelho = item.isEntry === true && item.scheduleId && _expSchedulesComAgend.has(item.scheduleId);
-
     const isPaidTrue = item.isPaid === true || item.isEntry === true;
     const value     = Math.abs(item.value    || 0);
     const openValue = Math.abs(item.openValue || 0);
@@ -1937,15 +1792,15 @@ function exportarJaneiro() {
     const datePay  = item.paymentDate || '';
     const dateDue  = item.dueDate || '';
     const dateSch  = item.scheduleDate || '';
-    const dateUsed = _expDataCaixa(item);
+    const dateUsed = _dataCaixa(item);
+    const dueYear  = dateDue ? new Date(dateDue).getFullYear() : 0;
     const dateField = item.isEntry === true ? 'dueDate(isEntry)'
-      : (item.paymentDate ? 'paymentDate'
-      : (item.scheduleId && _MAPA_ENTRADA_CREDITO[item.scheduleId]) ? 'Asaas(scheduleId)'
-      : (dateDue ? 'dueDate(fallback)' : 'scheduleDate'));
+      : (datePay ? 'paymentDate'
+      : (dueYear < 2026 && item.updateDate ? 'updateDate(caixa)'
+      : (dateDue ? 'dueDate' : 'scheduleDate')));
 
     let excl = null;
-    if (isEspelho) excl = 'espelho-asaas (dupla contagem)';
-    else if (v <= 0) excl = v === 0 ? 'v=0' : `v negativo (${v.toFixed(2)})`;
+    if (v <= 0) excl = v === 0 ? 'v=0' : `v negativo (${v.toFixed(2)})`;
     else if (!dateUsed) excl = 'sem data';
     else {
       const dt = new Date(dateUsed);
