@@ -1976,10 +1976,16 @@ function renderOrcGeral() {
   tbody += `<tr class="orc-section-header"><td colspan="14">RESULTADO OPERACIONAL</td></tr>
     <tr><td class="td-kpi-label" style="background:#eff6ff;font-weight:700;color:#1d4ed8">Resultado Operacional</td>${resCells}</tr>`;
 
+  const modoLabel = Object.keys(secoesAPI).length > 0
+    ? `API Nibo ✓ ${secoesRender.length} seções / ${secoesRender.reduce((s,x)=>s+x.cats.length,0)} cats`
+    : '⚠ Fallback hardcoded';
+  console.log('[OrcGeral] renderizado:', secoesRender.map(s=>`${s.label}(${s.cats.length})`).join(' | '));
+
   document.getElementById('orc-container').innerHTML = `
     <div style="background:white;border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--shadow)">
-      <div style="padding:0.75rem 1.25rem;border-bottom:1px solid var(--border)">
+      <div style="padding:0.75rem 1.25rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px">
         <span style="font-size:14px;font-weight:700;color:var(--text)">Planejamento Orçamentário 2026</span>
+        <span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0">${modoLabel}</span>
       </div>
       <div class="table-wrap">
         <table class="orc-table">
