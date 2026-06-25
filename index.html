@@ -769,10 +769,14 @@ async function carregarCategoriasNibo() {
   try {
     const data = await niboGet('categories');
     const items = data.items || data || [];
+    console.log('[Nibo cats] total itens:', items.length);
     if (!Array.isArray(items) || items.length === 0) return;
 
+    // Log da estrutura bruta do primeiro item para diagnóstico
+    console.log('[Nibo cats] sample item keys:', Object.keys(items[0] || {}));
+    console.log('[Nibo cats] sample item:', JSON.stringify(items[0]));
+
     const rec = [], desp = [];
-    // secoes: { 'Nome Seção Nibo': { rec: [...], desp: [...] } }
     const secoes = {};
 
     for (const cat of items) {
@@ -783,7 +787,6 @@ async function carregarCategoriasNibo() {
 
       if (isRec) rec.push(nome); else desp.push(nome);
 
-      // Detecta nome da seção pai — campo pode ser objeto {name:...} ou string direta
       const parentRaw = cat.parentCategory || cat.parent || cat.parentGroup || cat.group || cat.section || null;
       const secNome = parentRaw
         ? (typeof parentRaw === 'object' ? (parentRaw.name || parentRaw.categoryName || '') : String(parentRaw))
@@ -797,9 +800,15 @@ async function carregarCategoriasNibo() {
     }
 
     localStorage.setItem('c3x_nibo_cats_v3', JSON.stringify({ rec, desp, secoes }));
-    console.log('[Nibo] Seções:', Object.keys(secoes).map(s => `"${s}" rec:${secoes[s].rec.length} desp:${secoes[s].desp.length}`).join(' | '));
+    const nSecs = Object.keys(secoes).length;
+    console.log(`[Nibo cats] seções encontradas: ${nSecs}`);
+    if (nSecs > 0) {
+      console.log('[Nibo cats] seções:', Object.keys(secoes).map(s => `"${s}" rec:${secoes[s].rec.length} desp:${secoes[s].desp.length}`).join(' | '));
+    } else {
+      console.warn('[Nibo cats] NENHUMA seção detectada — campo pai não reconhecido. Inspecione o sample item acima.');
+    }
   } catch(e) {
-    console.warn('[Nibo] API de categorias indisponível, usando cache:', e.message);
+    console.warn('[Nibo cats] ERRO na API de categorias:', e.message, e);
   }
 }
 
@@ -1848,8 +1857,10 @@ function renderOrcGeral() {
   };
 
   // Montar seções a partir do cache da API (ou fallback hardcoded)
+  console.log('[OrcGeral] secoesAPI keys:', Object.keys(secoesAPI));
   let secoesRender;
   if (Object.keys(secoesAPI).length > 0) {
+    console.log('[OrcGeral] usando seções da API Nibo');
     const byId = {}; // id → { ...def, cats:[] }
     const addCat = (id, nome) => {
       if (!id) return;
@@ -1885,7 +1896,7 @@ function renderOrcGeral() {
     if (xRec.length)  { if (!byId.rec)  byId.rec  = { ...DISPLAY_DEFS.rec,  cats:[] }; byId.rec.cats.push(...xRec); }
     if (xDesp.length) { if (!byId.desp) byId.desp = { ...DISPLAY_DEFS.desp, cats:[] }; byId.desp.cats.push(...xDesp); }
   } else {
-    // Fallback: ORC_GERAL_SECOES hardcoded
+    console.warn('[OrcGeral] FALLBACK: secoesAPI vazio — usando ORC_GERAL_SECOES hardcoded');
     const catsFixas = new Set(ORC_GERAL_SECOES.flatMap(s => s.cats));
     const xRec  = [...new Set([...cached.rec,  ...Object.keys(REAL.categoriasRec||{})])].filter(c => !catsFixas.has(c));
     const xDesp = [...new Set([...cached.desp, ...Object.keys(REAL.categorias||{})])].filter(c => !catsFixas.has(c));
