@@ -772,7 +772,8 @@ async function carregarCategoriasNibo() {
     if (!Array.isArray(items) || items.length === 0) return;
 
     const rec = [], desp = [];
-    const secoes = {}; // { 'Nome Seção Nibo': { tipo:'rec'|'desp', cats:[...] } }
+    // secoes: { 'Nome Seção Nibo': { rec: [...], desp: [...] } }
+    const secoes = {};
 
     for (const cat of items) {
       const nome = (cat.name || cat.categoryName || cat.description || '').trim();
@@ -789,17 +790,14 @@ async function carregarCategoriasNibo() {
         : '';
       if (secNome.trim()) {
         const k = secNome.trim();
-        if (!secoes[k]) secoes[k] = { tipo: isRec ? 'rec' : 'desp', cats: [] };
-        if (!secoes[k].cats.includes(nome)) secoes[k].cats.push(nome);
+        if (!secoes[k]) secoes[k] = { rec: [], desp: [] };
+        const arr = isRec ? secoes[k].rec : secoes[k].desp;
+        if (!arr.includes(nome)) arr.push(nome);
       }
     }
 
-    localStorage.setItem('c3x_nibo_cats_v1', JSON.stringify({ rec, desp, secoes }));
-    const secsLog = Object.keys(secoes);
-    console.log('[Nibo] Seções detectadas:', secsLog.length ? secsLog.map(s => `"${s}" (${secoes[s].cats.length})`).join(' | ') : '⚠️ NENHUMA — campo pai não encontrado');
-    if (!secsLog.length && items.length > 0) {
-      console.log('[Nibo] Campos do 1º item:', Object.keys(items[0]));
-    }
+    localStorage.setItem('c3x_nibo_cats_v2', JSON.stringify({ rec, desp, secoes }));
+    console.log('[Nibo] Seções:', Object.keys(secoes).map(s => `"${s}" rec:${secoes[s].rec.length} desp:${secoes[s].desp.length}`).join(' | '));
   } catch(e) {
     console.warn('[Nibo] API de categorias indisponível, usando cache:', e.message);
   }
@@ -907,10 +905,12 @@ async function carregarNibo() {
 
   // Enriquecer cache de categorias com as vistas nos lançamentos desta sessão
   try {
-    const cached2 = JSON.parse(localStorage.getItem('c3x_nibo_cats_v1') || '{"rec":[],"desp":[]}');
+    const cached2 = JSON.parse(localStorage.getItem('c3x_nibo_cats_v2') || '{"rec":[],"desp":[],"secoes":{}}');
     const setRec  = new Set([...cached2.rec,  ...Object.keys(REAL.categoriasRec||{})]);
     const setDesp = new Set([...cached2.desp, ...Object.keys(REAL.categorias||{})]);
-    localStorage.setItem('c3x_nibo_cats_v1', JSON.stringify({ rec:[...setRec], desp:[...setDesp] }));
+    cached2.rec  = [...setRec];
+    cached2.desp = [...setDesp];
+    localStorage.setItem('c3x_nibo_cats_v2', JSON.stringify(cached2));
   } catch(e) {}
 }
 
@@ -1111,10 +1111,12 @@ function renderMensal() {
   function projRecCC(cc) {
     const plan = carregarOrcGeral();
     const n = cc.toLowerCase();
-    const cached = JSON.parse(localStorage.getItem('c3x_nibo_cats_v1') || '{"rec":[],"desp":[],"secoes":{}}');
+    const cached = JSON.parse(localStorage.getItem('c3x_nibo_cats_v2') || '{"rec":[],"desp":[],"secoes":{}}');
     const secsAPI = cached.secoes || {};
+    // Receita cats = rec[] de seções mapeadas como recTarget:'rec' (receita e despesas op.)
+    const recTargetSecs = /receita|despesa/i;
     const baseCats = Object.keys(secsAPI).length > 0
-      ? Object.values(secsAPI).filter(s => s.tipo === 'rec').flatMap(s => s.cats)
+      ? Object.entries(secsAPI).filter(([k]) => recTargetSecs.test(k)).flatMap(([,v]) => v.rec || [])
       : (ORC_GERAL_SECOES.find(s=>s.id==='rec')?.cats || []);
     const allRec = [...new Set([...baseCats, ...cached.rec])];
     const v = allRec
@@ -1823,61 +1825,71 @@ function salvarOrcGeral(silent=false) {
 
 function renderOrcGeral() {
   const plan = carregarOrcGeral();
-  const cached = JSON.parse(localStorage.getItem('c3x_nibo_cats_v1') || '{"rec":[],"desp":[],"secoes":{}}');
+  const cached = JSON.parse(localStorage.getItem('c3x_nibo_cats_v2') || '{"rec":[],"desp":[],"secoes":{}}');
   const secoesAPI = cached.secoes || {};
 
-  // Configuração de display: mapeamento por regex no nome da seção Nibo
-  // Ordem importa — dedu antes de receita para evitar "Deduções da Receita" cair em RECEITAS
-  const SEC_DISPLAY = [
-    { re:/dedu/i,         id:'ded',  label:'DEDUÇÕES DA RECEITA',   sub:{ bg:'#fff7ed', color:'#c2410c', label:'▸ Total Deduções' }},
-    { re:/^receita/i,     id:'rec',  label:'RECEITAS',              sub:{ bg:'#f0fdf8', color:'#15803d', label:'▸ Total Receita Bruta' }},
-    { re:/custo/i,        id:'cus',  label:'CUSTOS DOS SERVIÇOS',   sub:{ bg:'#fef3c7', color:'#92400e', label:'▸ Total Custos' }},
-    { re:/despesa/i,      id:'desp', label:'DESPESAS OPERACIONAIS', sub:{ bg:'#fef3c7', color:'#92400e', label:'▸ Total Despesas Op.' }},
-    { re:/investimento/i, id:'inv',  label:'INVESTIMENTOS',         sub:{ bg:'#f1f5f9', color:'#475569', label:'▸ Total Investimentos' }},
+  // Mapeamento: seção Nibo → display. Cada seção pode ter cats rec e desp separadas.
+  // rec = para RECEITAS, desp = para CUSTOS/DESPESAS conforme o tipo da seção Nibo.
+  const NIBO_SEC_MAP = [
+    { re:/receita/i,      recTarget:'rec', despTarget:'ded'  }, // Receitas operacionais: in→RECEITAS, out→DEDUÇÕES
+    { re:/custo/i,        recTarget:null,  despTarget:'cus'  }, // Custos operacionais → CUSTOS
+    { re:/despesa/i,      recTarget:'rec', despTarget:'desp' }, // Despesas op.+outras rec.: in→RECEITAS, out→DESPESAS
+    { re:/investimento/i, recTarget:null,  despTarget:'inv'  }, // Atividades de investimento → INVESTIMENTOS
+    { re:/financiamento/i,recTarget:null,  despTarget:'inv'  }, // Atividades de financiamento → INVESTIMENTOS
   ];
+
+  const DISPLAY_DEFS = {
+    rec:  { id:'rec',  label:'RECEITAS',              tipo:'rec',  sub:{ bg:'#f0fdf8', color:'#15803d', label:'▸ Total Receita Bruta' }},
+    ded:  { id:'ded',  label:'DEDUÇÕES DA RECEITA',   tipo:'desp', sub:{ bg:'#fff7ed', color:'#c2410c', label:'▸ Total Deduções' }},
+    cus:  { id:'cus',  label:'CUSTOS DOS SERVIÇOS',   tipo:'desp', sub:{ bg:'#fef3c7', color:'#92400e', label:'▸ Total Custos' }},
+    desp: { id:'desp', label:'DESPESAS OPERACIONAIS', tipo:'desp', sub:{ bg:'#fef3c7', color:'#92400e', label:'▸ Total Despesas Op.' }},
+    inv:  { id:'inv',  label:'INVESTIMENTOS',         tipo:'inv',  sub:{ bg:'#f1f5f9', color:'#475569', label:'▸ Total Investimentos' }},
+  };
 
   // Montar seções a partir do cache da API (ou fallback hardcoded)
   let secoesRender;
   if (Object.keys(secoesAPI).length > 0) {
-    const byId = {};
+    const byId = {}; // id → { ...def, cats:[] }
+    const addCat = (id, nome) => {
+      if (!id) return;
+      if (!byId[id]) byId[id] = { ...DISPLAY_DEFS[id], cats: [] };
+      if (!byId[id].cats.includes(nome)) byId[id].cats.push(nome);
+    };
+
     for (const [nomeSec, info] of Object.entries(secoesAPI)) {
-      const cfg = SEC_DISPLAY.find(c => c.re.test(nomeSec));
-      const id  = cfg ? cfg.id : 'ext_' + nomeSec.replace(/\W+/g,'_').toLowerCase();
-      if (!byId[id]) byId[id] = {
-        id, tipo: info.tipo,
-        label: cfg ? cfg.label : nomeSec.toUpperCase(),
-        sub:   cfg ? cfg.sub : { bg:'#f1f5f9', color:'#475569', label:'▸ Total ' + nomeSec },
-        cats:  []
-      };
-      for (const c of info.cats) if (!byId[id].cats.includes(c)) byId[id].cats.push(c);
+      const cfg = NIBO_SEC_MAP.find(c => c.re.test(nomeSec));
+      if (cfg) {
+        (info.rec  || []).forEach(c => addCat(cfg.recTarget,  c));
+        (info.desp || []).forEach(c => addCat(cfg.despTarget, c));
+      } else {
+        // Seção não mapeada: tudo vai para um grupo extra
+        const id = 'ext_' + nomeSec.replace(/\W+/g,'_').toLowerCase();
+        const allCats = [...(info.rec||[]), ...(info.desp||[])];
+        allCats.forEach(c => {
+          if (!byId[id]) byId[id] = { id, label: nomeSec.toUpperCase(), tipo:'desp', sub:{ bg:'#f1f5f9', color:'#475569', label:'▸ Total '+nomeSec }, cats:[] };
+          if (!byId[id].cats.includes(c)) byId[id].cats.push(c);
+        });
+      }
     }
-    // Ordem de exibição: rec → ded → cus → desp → inv → extras
-    const RENDER_ORDER = ['rec','ded','cus','desp','inv'];
-    const known = RENDER_ORDER.map(id => byId[id]).filter(Boolean);
-    const extra = Object.values(byId).filter(s => !SEC_DISPLAY.find(c => c.id === s.id));
+
+    const ORDER = ['rec','ded','cus','desp','inv'];
+    const known = ORDER.map(id => byId[id]).filter(Boolean);
+    const extra = Object.values(byId).filter(s => !ORDER.includes(s.id));
     secoesRender = [...known, ...extra];
-    // Enriquecer receita/despesa com categorias dos lançamentos não cobertas pela API
-    const allAPI  = new Set(secoesRender.flatMap(s => s.cats));
+
+    // Enriquecer com categorias dos lançamentos não cobertas pela API
+    const allAPI = new Set(secoesRender.flatMap(s => s.cats));
     const xRec  = Object.keys(REAL.categoriasRec || {}).filter(c => !allAPI.has(c));
     const xDesp = Object.keys(REAL.categorias   || {}).filter(c => !allAPI.has(c));
-    const sRec  = secoesRender.find(s => s.id === 'rec');
-    const sDesp = secoesRender.find(s => s.id === 'desp');
-    if (sRec  && xRec.length)  sRec.cats  = [...sRec.cats,  ...xRec];
-    if (sDesp && xDesp.length) sDesp.cats = [...sDesp.cats, ...xDesp];
+    if (xRec.length)  { if (!byId.rec)  byId.rec  = { ...DISPLAY_DEFS.rec,  cats:[] }; byId.rec.cats.push(...xRec); }
+    if (xDesp.length) { if (!byId.desp) byId.desp = { ...DISPLAY_DEFS.desp, cats:[] }; byId.desp.cats.push(...xDesp); }
   } else {
     // Fallback: ORC_GERAL_SECOES hardcoded
     const catsFixas = new Set(ORC_GERAL_SECOES.flatMap(s => s.cats));
     const xRec  = [...new Set([...cached.rec,  ...Object.keys(REAL.categoriasRec||{})])].filter(c => !catsFixas.has(c));
     const xDesp = [...new Set([...cached.desp, ...Object.keys(REAL.categorias||{})])].filter(c => !catsFixas.has(c));
-    const FB_SUB = {
-      rec:{bg:'#f0fdf8',color:'#15803d',label:'▸ Total Receita Bruta'},
-      ded:{bg:'#fff7ed',color:'#c2410c',label:'▸ Total Deduções'},
-      cus:{bg:'#fef3c7',color:'#92400e',label:'▸ Total Custos'},
-      desp:{bg:'#fef3c7',color:'#92400e',label:'▸ Total Despesas Op.'},
-      inv:{bg:'#f1f5f9',color:'#475569',label:'▸ Total Investimentos'},
-    };
     secoesRender = ORC_GERAL_SECOES.map(sec => ({
-      id: sec.id, label: sec.label, tipo: sec.tipo, sub: FB_SUB[sec.id],
+      ...DISPLAY_DEFS[sec.id], tipo: sec.tipo,
       cats: sec.id==='rec'  ? [...sec.cats, ...xRec]
           : sec.id==='desp' ? [...sec.cats, ...xDesp]
           : [...sec.cats]
