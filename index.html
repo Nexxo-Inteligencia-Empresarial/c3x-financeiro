@@ -217,6 +217,7 @@ tr:hover td { background: #f9fafb; }
     <input class="setup-input" id="token-input" type="password" placeholder="Cole o token aqui" autocomplete="off"/>
     <p class="setup-hint">Encontre em: <b>Empresa → Configurações → API</b></p>
     <div class="setup-error" id="setup-error">Token inválido. Verifique e tente novamente.</div>
+    <div class="setup-error" id="setup-error-detail" style="margin-top:6px;font-size:11px;word-break:break-all"></div>
     <button class="setup-btn" onclick="conectar()">Conectar e carregar dados →</button>
   </div>
 </div>
@@ -1689,12 +1690,16 @@ async function iniciar() {
     document.getElementById('topbar-updated').textContent = `Atualizado às ${now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
     iniciarAutoRefresh();
   } catch(e) {
-    console.error(e);
+    console.error('[C3X] Erro ao carregar:', e);
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('setup-screen').style.display = 'flex';
-    document.getElementById('setup-error').style.display = 'block';
-    TOKEN = '';
-    localStorage.removeItem('nibo_token_c3x');
+    const isAuthErr = e.message && /401|403|token|autoriza/i.test(e.message);
+    const errEl = document.getElementById('setup-error');
+    const detEl = document.getElementById('setup-error-detail');
+    errEl.textContent = isAuthErr ? 'Token inválido. Verifique e tente novamente.' : 'Erro ao carregar dados. Verifique sua conexão.';
+    errEl.style.display = 'block';
+    if (detEl) { detEl.textContent = e.message || String(e); detEl.style.display = 'block'; }
+    if (isAuthErr) { TOKEN = ''; localStorage.removeItem('nibo_token_c3x'); }
   }
 }
 
@@ -1813,9 +1818,10 @@ function renderOrcGeral() {
   const secoesAPI = cached.secoes || {};
 
   // Configuração de display: mapeamento por regex no nome da seção Nibo
+  // Ordem importa — dedu antes de receita para evitar "Deduções da Receita" cair em RECEITAS
   const SEC_DISPLAY = [
-    { re:/receita/i,      id:'rec',  label:'RECEITAS',              sub:{ bg:'#f0fdf8', color:'#15803d', label:'▸ Total Receita Bruta' }},
     { re:/dedu/i,         id:'ded',  label:'DEDUÇÕES DA RECEITA',   sub:{ bg:'#fff7ed', color:'#c2410c', label:'▸ Total Deduções' }},
+    { re:/^receita/i,     id:'rec',  label:'RECEITAS',              sub:{ bg:'#f0fdf8', color:'#15803d', label:'▸ Total Receita Bruta' }},
     { re:/custo/i,        id:'cus',  label:'CUSTOS DOS SERVIÇOS',   sub:{ bg:'#fef3c7', color:'#92400e', label:'▸ Total Custos' }},
     { re:/despesa/i,      id:'desp', label:'DESPESAS OPERACIONAIS', sub:{ bg:'#fef3c7', color:'#92400e', label:'▸ Total Despesas Op.' }},
     { re:/investimento/i, id:'inv',  label:'INVESTIMENTOS',         sub:{ bg:'#f1f5f9', color:'#475569', label:'▸ Total Investimentos' }},
@@ -1836,8 +1842,9 @@ function renderOrcGeral() {
       };
       for (const c of info.cats) if (!byId[id].cats.includes(c)) byId[id].cats.push(c);
     }
-    // Ordem: seções conhecidas primeiro, depois extras
-    const known = SEC_DISPLAY.map(c => byId[c.id]).filter(Boolean);
+    // Ordem de exibição: rec → ded → cus → desp → inv → extras
+    const RENDER_ORDER = ['rec','ded','cus','desp','inv'];
+    const known = RENDER_ORDER.map(id => byId[id]).filter(Boolean);
     const extra = Object.values(byId).filter(s => !SEC_DISPLAY.find(c => c.id === s.id));
     secoesRender = [...known, ...extra];
     // Enriquecer receita/despesa com categorias dos lançamentos não cobertas pela API
