@@ -1023,23 +1023,47 @@ function renderMensal() {
     </tr>`;
   }
 
-  // Helper: linha só realizado (tabelas por CC)
-  function mkRowReal(label, r, total, highlight) {
-    const pct = total > 0 ? (r / total * 100).toFixed(1) + '%' : '—';
-    const color = highlight ? (r >= 0 ? 'var(--green)' : 'var(--red)') : '';
+  // Helper: linha CC com projetado opcional (null = sem projeção)
+  function mkRowCC(label, r, p, isDesp) {
+    if (p !== null) {
+      const dif = r - p;
+      const ating = p !== 0 ? r / p : (r > 0 ? 1 : 0);
+      const stv = isDesp ? (ating<=1?'badge-green':ating<=1.1?'badge-amber':'badge-red')
+                         : (ating>=0.9?'badge-green':ating>=0.7?'badge-amber':'badge-red');
+      const difOk = isDesp ? dif <= 0 : dif >= 0;
+      return `<tr>
+        <td class="td-name">${label}</td>
+        <td class="td-mono">${fmtFull(p)}</td>
+        <td class="td-mono">${fmtFull(r)}</td>
+        <td class="td-mono" style="color:${difOk?'var(--green)':'var(--red)'}">${dif>=0?'+':''}${fmtFull(dif)}</td>
+        <td><span class="badge ${stv}">${(dif>=0?'+':'')+(ating*100-100).toFixed(1)+'%'}</span></td>
+      </tr>`;
+    }
+    const resColor = isDesp ? '' : (r >= 0 ? 'color:var(--green)' : 'color:var(--red)');
     return `<tr>
       <td class="td-name">${label}</td>
-      <td class="td-mono" style="color:${color}">${fmtFull(r)}</td>
-      <td class="td-mono" style="color:var(--text2);font-size:12px">${pct}</td>
+      <td class="td-mono" style="color:var(--text2)">—</td>
+      <td class="td-mono" style="${resColor}">${fmtFull(r)}</td>
+      <td class="td-mono" style="color:var(--text2)">—</td>
+      <td style="color:var(--text2)">—</td>
     </tr>`;
+  }
+
+  // Mapa CC → projeção de receita (CCs conhecidos)
+  function projRecCC(cc) {
+    const n = cc.toLowerCase();
+    if (n.includes('escola')) return PROJ.escola[mes];
+    if (n.includes('prime'))  return PROJ.prime[mes];
+    if (n.includes('destrava')) return PROJ.destrava[mes];
+    return null;
   }
 
   // ── Tabela Geral ──────────────────────────────────────────────
   const geralRows =
-    mkRowProj('Receita Operacional', recR, recP, false) +
-    mkRowProj('Custos (com CC)',      custosR, 0,    true) +
-    mkRowProj('Despesas Gerais',      despGeralR, 0, true) +
-    mkRowProj('Resultado Operacional',resR, resP, false);
+    mkRowProj('Receita Operacional',  recR,      recP,  false) +
+    mkRowProj('Custos (com CC)',       custosR,   despP, true)  +
+    mkRowProj('Despesas Gerais',       despGeralR, 0,    true)  +
+    mkRowProj('Resultado Operacional', resR,      resP,  false);
 
   // ── Tabelas por Centro de Custo ───────────────────────────────
   const ccs = Object.keys(CC_DATA).filter(cc => CC_DATA[cc].desp.some(v=>v>0));
@@ -1047,14 +1071,16 @@ function renderMensal() {
     const ccDesp = CC_DATA[cc].desp[mes];
     const ccRec  = CC_RECEITA[cc] ? CC_RECEITA[cc][mes] : 0;
     const ccRes  = ccRec - ccDesp;
+    const ccRecProj = projRecCC(cc);
+    const ccResProj = ccRecProj !== null ? ccRecProj - 0 : null; // sem proj de custo
     const ccRows =
-      mkRowReal('Receita',              ccRec,  ccRec,  false) +
-      mkRowReal('Custos',               ccDesp, ccRec,  false) +
-      mkRowReal('Resultado Operacional',ccRes,  ccRec,  true);
+      mkRowCC('Receita',              ccRec,  ccRecProj, false) +
+      mkRowCC('Custos',               ccDesp, null,      true)  +
+      mkRowCC('Resultado Operacional',ccRes,  ccResProj, false);
     return `<div class="table-card" style="margin-top:1.25rem">
       <div class="table-header"><div class="table-title">${cc}</div></div>
       <table>
-        <thead><tr><th>Linha</th><th>Realizado</th><th>% Receita</th></tr></thead>
+        <thead><tr><th>Linha</th><th>Projetado</th><th>Realizado</th><th>Diferença</th><th>Status</th></tr></thead>
         <tbody>${ccRows}</tbody>
       </table>
     </div>`;
