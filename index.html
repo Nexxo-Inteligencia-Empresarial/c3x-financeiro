@@ -1584,13 +1584,13 @@ function abrirCC(cc) {
     ${kpiCard('Margem %',            margemCalc!==null?margemCalc.toFixed(1)+'%':'—',      'contribuição',          (margemCalc||0)>=40?'var(--green)':'var(--amber)')}
     ${kpiCard('Receita total',       fmtFull(recTotal),                                    'recebida + inadimp.',   'var(--green)')}
     ${kpiCard('Meta de Receita',     meta_rec!==null?fmtFull(meta_rec):'—',               'Orç. Geral',            '#7c3aed')}
-    ${kpiCard('MRR',                 mrrManual!==null?fmtK(mrrManual):'—',                'recorrente/mês',        'var(--green)')}
+    ${kpiCard('Atingimento Meta %',  ating_meta!==null?ating_meta.toFixed(1)+'%':'Sem meta cadastrada', 'receita total ÷ meta', (ating_meta||0)>=100?'var(--green)':'var(--amber)')}
     ${kpiCard('ARPU',                arpu!==null?fmtK(arpu):'Precisa de Unidades',        'receita total ÷ clientes','var(--amber)')}
     ${kpiCard('Unidades / Clientes', unidades!==null?Math.round(unidades).toString():'—', 'ativos no período',     'var(--blue)')}
     ${kpiCard('Novos no período',    novos!==null?novos.toString():'—',                   'aquisições',            'var(--blue)')}
     ${kpiCard('Inadimplência',       inadim>0?fmtFull(inadim):'R$ 0,00',                 'vencido não pago',      inadim>0?'var(--red)':'var(--green)')}
     ${kpiCard('Inadimplência %',     inadim_pct!==null?inadim_pct.toFixed(1)+'%':'—',    'do total faturado',     (inadim_pct||0)>10?'var(--red)':'var(--amber)')}
-    ${kpiCard('Atingimento Meta %',  ating_meta!==null?ating_meta.toFixed(1)+'%':'Sem meta cadastrada', 'receita total ÷ meta', (ating_meta||0)>=100?'var(--green)':'var(--amber)', true)}`;
+    ${kpiCard('MRR',                 mrrManual!==null?fmtK(mrrManual):'—',               'recorrente/mês',        'var(--green)', true)}`;
 
   // Gráfico de despesas
   const labels = MESES.slice(from, to+1);
