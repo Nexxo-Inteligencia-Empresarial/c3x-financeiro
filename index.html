@@ -1055,6 +1055,56 @@ function renderCategorias() {
   }
 }
 
+// Receita projetada por CC derivada do Orçamento Geral — fonte única de verdade para meta_rec
+function projRecCC(cc, mes) {
+  const plan = carregarOrcGeral();
+  const n = cc.toLowerCase();
+  const cached = JSON.parse(localStorage.getItem('c3x_nibo_cats_v4') || '{"rec":[],"desp":[],"secoes":{}}');
+  const secsAPI = cached.secoes || {};
+
+  function catMatchesCC(cat) {
+    const c = cat.toLowerCase();
+    if (n.includes('escola')  && (c.includes('escola')))  return true;
+    if (n.includes('prime')   && (c.includes('prime')   || c.includes('mentoria'))) return true;
+    if (n.includes('c3x')     && (c.includes('c3x')))     return true;
+    if ((n.includes('destrava') || n.includes('summit') || n.includes('evento')) &&
+        (c.includes('destrava') || c.includes('summit') || c.includes('evento') || c.includes('fora do card'))) return true;
+    return false;
+  }
+
+  const matchedCats = [];
+  const recAllCats = new Set(cached.rec); // todas categorias tipo receita do Nibo
+
+  if (Object.keys(secsAPI).length > 0) {
+    for (const [key, val] of Object.entries(secsAPI)) {
+      if (!/^receitas? operacionais/i.test(key)) continue;
+      const k = key.toLowerCase();
+      const secMatchesCC =
+        (n.includes('escola')  && k.includes('escola'))  ||
+        (n.includes('prime')   && k.includes('prime'))   ||
+        (n.includes('c3x')     && k.includes('c3x'))     ||
+        ((n.includes('destrava') || n.includes('summit') || n.includes('evento')) && k.includes('evento'));
+
+      for (const cat of (val.rec || [])) {
+        // Inclui se: (1) seção bate com o CC, ou (2) nome da categoria bate com o CC
+        if (secMatchesCC || catMatchesCC(cat)) matchedCats.push(cat);
+      }
+    }
+  } else {
+    // Fallback: casamento pelo nome da categoria
+    const fallbackCats = ORC_GERAL_SECOES.find(s => s.id === 'rec')?.cats || [];
+    fallbackCats.filter(catMatchesCC).forEach(c => matchedCats.push(c));
+  }
+
+  const total = [...new Set(matchedCats)]
+    .reduce((sum, cat) => {
+      const arr = plan[cat];
+      return sum + (Array.isArray(arr) ? (arr[mes] || 0) : 0);
+    }, 0);
+  console.error(`[projRecCC] cc="${cc}" mes=${mes} plan_keys=${Object.keys(plan).length} matched=[${[...new Set(matchedCats)].join(' | ')}] total=${total}`);
+  return total > 0 ? total : null;
+}
+
 function renderMensal() {
   const [from2, to2] = periodoMeses();
   const mes = MES_FILTRO >= 0 ? MES_FILTRO : (to2 <= 4 ? to2 : 4);
@@ -1115,31 +1165,6 @@ function renderMensal() {
     </tr>`;
   }
 
-  // Receita projetada por CC: derivada do Orçamento Geral (categoria → CC)
-  function projRecCC(cc) {
-    const plan = carregarOrcGeral();
-    const n = cc.toLowerCase();
-    const cached = JSON.parse(localStorage.getItem('c3x_nibo_cats_v4') || '{"rec":[],"desp":[],"secoes":{}}');
-    const secsAPI = cached.secoes || {};
-    // Receita cats = rec[] de seções mapeadas como recTarget:'rec' ou 'outrec'
-    const recTargetSecs = /receita|despesa/i;
-    const baseCats = Object.keys(secsAPI).length > 0
-      ? Object.entries(secsAPI).filter(([k]) => recTargetSecs.test(k)).flatMap(([,v]) => v.rec || [])
-      : (ORC_GERAL_SECOES.find(s=>s.id==='rec')?.cats || []);
-    const allRec = [...new Set([...baseCats, ...cached.rec])];
-    const v = allRec
-      .filter(cat => {
-        const c = cat.toLowerCase();
-        if (n.includes('escola') && c.includes('escola')) return true;
-        if (n.includes('prime') && (c.includes('prime') || c.includes('mentoria'))) return true;
-        if ((n.includes('destrava') || n.includes('summit') || n.includes('evento')) &&
-            (c.includes('destrava') || c.includes('summit') || c.includes('evento') || c.includes('fora do card'))) return true;
-        return false;
-      })
-      .reduce((sum, cat) => sum + ((plan[cat]||[])[mes]||0), 0);
-    return v > 0 ? v : null;
-  }
-
   // Despesa projetada por CC: lida do Orçamento CC (meta_desp planejado)
   function projDespCC(cc) {
     const orc = carregarOrcamento();
@@ -1160,7 +1185,7 @@ function renderMensal() {
     const ccDesp = CC_DATA[cc].desp[mes];
     const ccRec  = CC_RECEITA[cc] ? CC_RECEITA[cc][mes] : 0;
     const ccRes  = ccRec - ccDesp;
-    const ccRecProj  = projRecCC(cc);
+    const ccRecProj  = projRecCC(cc, mes);
     const ccDespProj = projDespCC(cc);
     const ccResProj  = ccRecProj !== null
       ? ccRecProj - (ccDespProj !== null ? ccDespProj : ccDesp)
@@ -1478,6 +1503,7 @@ function renderServicos() {
 }
 
 function abrirCC(cc) {
+  console.error(`[abrirCC] cc="${cc}"`);
   const [from, to] = periodoMeses();
   const config = carregarConfig();
   const kpisSel = config.ccKpis[cc] || [];
@@ -1517,7 +1543,12 @@ function abrirCC(cc) {
   const ccInadimData = CC_INADIM[cc] || { total: 0, porMes: Array(12).fill(0) };
   const inadim = sumRange(ccInadimData.porMes, from, to);
   const conversao = getKpi('conversao');  // média: taxa %
-  const meta_rec  = getKpi('meta_rec');   // soma: meta total do período
+  // Meta de Receita vem do Orçamento Geral (fonte única)
+  const meta_rec = (() => {
+    let total = 0;
+    for (let m = from; m <= to; m++) { const v = projRecCC(cc, m); if (v) total += v; }
+    return total > 0 ? total : null;
+  })();
   const mrrManual = getKpi('mrr');        // média: MRR do período
   const ltvManual = getKpi('ltv');        // média: LTV
 
@@ -1543,7 +1574,7 @@ function abrirCC(cc) {
     { label:'Churn',                  value:churnVal!==null?churnVal.toString():'—',   sub:'cancelamentos',        cor:'var(--red)',   show: churnVal!==null },
     { label:'Inadimplência (Nibo)',    value:inadim>0?fmtFull(inadim):'R$ 0,00',        sub:'vencido não pago',     cor:inadim>0?'var(--red)':'var(--green)', show: true },
     { label:'Conversão %',            value:conversao!==null?conversao.toFixed(1)+'%':'—', sub:'taxa média',       cor:'var(--blue)',  show: conversao!==null },
-    { label:'Meta de Receita',        value:meta_rec!==null?fmtFull(meta_rec):'—',    sub:'projetado',            cor:'var(--text2)', show: meta_rec!==null },
+    { label:'Meta de Receita (Orç. Geral)', value:meta_rec!==null?fmtFull(meta_rec):'—', sub:'do Orçamento Geral', cor:'#7c3aed', show: meta_rec!==null },
     { label:'MRR',                    value:mrrManual!==null?fmtK(mrrManual):'—', sub:'recorrente/mês',     cor:'var(--green)', show: mrrManual!==null },
     { label:'LTV',                    value:ltvManual!==null?fmtK(ltvManual):'—', sub:'por cliente',        cor:'var(--green)', show: ltvManual!==null },
     // Calculados selecionados
@@ -1768,7 +1799,6 @@ const ORC_KPIS = [
   { id:'churn',     label:'Churn (cancelamentos)',      icon:'📉', unit:'un',  autoReal: false, agr:'sum' }, // fluxo: soma
   { id:'mrr',       label:'MRR (R$)',                   icon:'💵', unit:'R$',  autoReal: true,  autoDesc:'Receita Nibo', agr:'avg' },
   { id:'conversao', label:'Taxa de Conversão %',        icon:'🔄', unit:'%',   autoReal: false, agr:'avg' },
-  { id:'meta_rec',  label:'Meta de Receita (R$)',       icon:'🎯', unit:'R$',  autoReal: false, agr:'sum' },
   { id:'ltv',       label:'LTV (R$)',                   icon:'♾️', unit:'R$',  autoReal: false, agr:'avg' },
 ];
 
@@ -2077,6 +2107,7 @@ function selecionarOrcCC(cc) {
 }
 
 function renderOrcTabela(cc) {
+  console.error(`[renderOrcTabela] cc="${cc}" plan_keys=${Object.keys(carregarOrcGeral()).length}`);
   const orc = carregarOrcamento();
   const ccOrc = orc[cc] || {};
 
@@ -2125,6 +2156,18 @@ function renderOrcTabela(cc) {
         ${cellsPR}
       </tr>`;
   }
+
+  // Linha Meta de Receita: projetado pelo Orçamento Geral (somente leitura)
+  let metaRecCells = '';
+  for (let i = 0; i < 12; i++) {
+    const v = projRecCC(cc, i);
+    metaRecCells += `<td style="padding:4px;text-align:center"><div style="font-size:11px;font-weight:600;color:#7c3aed">${v !== null ? fmtK(v) : '—'}</div></td>`;
+  }
+  const metaRecOrcRow = `
+    <tr style="background:#faf5ff">
+      <td class="td-kpi-label" style="background:#faf5ff;color:#7c3aed">🎯 Meta de Receita (Orç. Geral) <span style="font-size:10px;font-weight:400;color:#7c3aed">(automático)</span></td>
+      ${metaRecCells}
+    </tr>`;
 
   // Linha de totais MRR (receita Nibo)
   const totalNiboRow = `
@@ -2186,6 +2229,7 @@ function renderOrcTabela(cc) {
           </thead>
           <tbody>
             ${rows}
+            ${metaRecOrcRow}
             ${metaDespRow}
             ${totalNiboRow}
           </tbody>
