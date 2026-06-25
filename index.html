@@ -586,7 +586,7 @@ tr:hover td { background: #f9fafb; }
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:1.5rem;flex-wrap:wrap">
       <span style="font-size:13px;color:var(--text2);font-weight:500">Serviço:</span>
       <div id="orc-cc-chips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
-      <button onclick="salvarOrcamento()" style="margin-left:auto;padding:8px 20px;background:var(--green);border:none;border-radius:8px;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;color:white;cursor:pointer">
+      <button onclick="ORC_ABA==='__geral__'?salvarOrcGeral():salvarOrcamento()" style="margin-left:auto;padding:8px 20px;background:var(--green);border:none;border-radius:8px;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;color:white;cursor:pointer">
         💾 Salvar
       </button>
       <span id="orc-saved-msg" style="display:none;font-size:13px;color:var(--green)">✓ Salvo!</span>
@@ -677,9 +677,10 @@ function _dataCaixa(item) {
 }
 
 let REAL = {
-  receita:  Array(12).fill(0),
-  despesa:  Array(12).fill(0),
-  custos:   Array(12).fill(0), // despesas COM centro de custo (diretas)
+  receita:     Array(12).fill(0),
+  despesa:     Array(12).fill(0),
+  custos:      Array(12).fill(0), // despesas COM centro de custo (diretas)
+  categoriasRec: {}, // receitas por categoria (espelha Nibo)
   resultado:Array(12).fill(0),
   escola:   Array(12).fill(0),
   prime:    Array(12).fill(0),
@@ -786,10 +787,11 @@ async function carregarNibo() {
   document.getElementById('loader-label').textContent = 'Processando receitas...';
 
   // Processar por mês
-  REAL.receita  = Array(12).fill(0);
-  REAL.despesa  = Array(12).fill(0);
-  REAL.custos   = Array(12).fill(0);
-  REAL.categorias = {};
+  REAL.receita      = Array(12).fill(0);
+  REAL.despesa      = Array(12).fill(0);
+  REAL.custos       = Array(12).fill(0);
+  REAL.categorias   = {};
+  REAL.categoriasRec = {};
 
   // REGIME DE CAIXA — créditos
   for (const item of (creditData.items||[])) {
@@ -805,8 +807,10 @@ async function carregarNibo() {
     const m = dt.getMonth();
     REAL.receita[m] += v;
 
-    const cat  = item.categories?.[0]?.categoryName || item.categoryName || '';
+    const cat  = item.categories?.[0]?.categoryName || item.categoryName || 'Outras Receitas';
     const catL = cat.toLowerCase();
+    if (!REAL.categoriasRec[cat]) REAL.categoriasRec[cat] = Array(12).fill(0);
+    REAL.categoriasRec[cat][m] += v;
     const desc = (item.description||'').toLowerCase();
     const stake = (item.stakeholder?.name||'').toLowerCase();
     if ((catL.includes('escola') || desc.includes('escola de sócio')) && !catL.includes('clube')) {
@@ -1672,6 +1676,191 @@ const ORC_KPIS = [
 ];
 
 let ORC_CC_ATIVO = null;
+let ORC_ABA = '__geral__'; // '__geral__' ou nome do CC
+
+/* Seções do Orçamento Geral — espelham as categorias do Nibo */
+const ORC_GERAL_SECOES = [
+  { id:'rec', label:'RECEITAS', tipo:'rec', cats:[
+    'Receita Escola de Sócios',
+    'Receita Prime',
+    'Receita C3X',
+    'Receita Summit Nexxo',
+    'Juros',
+  ]},
+  { id:'ded', label:'DEDUÇÕES DA RECEITA', tipo:'desp', cats:[
+    'Dedução da Receita - Comissão (Escola de Sócios)',
+    'Dedução da Receita - Comissão (Prime)',
+    'Dedução da Receita - Comissão (Destrava)',
+  ]},
+  { id:'cus', label:'CUSTOS DOS SERVIÇOS', tipo:'desp', cats:[
+    'Prestação de Serviço por Terceiros',
+    'Custo serviço prestado - mão de obra',
+  ]},
+  { id:'desp', label:'DESPESAS OPERACIONAIS', tipo:'desp', cats:[
+    'Trafego Pago',
+    'Almoço / Jantar / Coffe Break',
+    'Brinde - Eventos',
+    'Gráfica',
+    'Sistemas',
+    'INSS / IRRF',
+    'FGTS',
+    'Impostos - DAS',
+    'Despesas com cobrança',
+    'Transporte / Uber / Gasolina',
+    'Material de escritório',
+    'TFF',
+  ]},
+  { id:'inv', label:'INVESTIMENTOS', tipo:'inv', cats:[
+    'Adiantamento de Lucros',
+    'Equipamentos',
+    'Utensílios',
+  ]},
+];
+
+function carregarOrcGeral() {
+  const s = localStorage.getItem('c3x_orc_geral_v1');
+  return s ? JSON.parse(s) : {};
+}
+
+function salvarOrcGeral() {
+  const data = {};
+  document.querySelectorAll('.orc-geral-input').forEach(inp => {
+    const cat = inp.dataset.cat;
+    const mes = parseInt(inp.dataset.mes);
+    if (!data[cat]) data[cat] = Array(12).fill(0);
+    data[cat][mes] = parseFloat(inp.value) || 0;
+  });
+  localStorage.setItem('c3x_orc_geral_v1', JSON.stringify(data));
+  const msg = document.getElementById('orc-saved-msg');
+  if (msg) { msg.style.display='inline'; setTimeout(()=>msg.style.display='none',2000); }
+}
+
+function renderOrcGeral() {
+  const plan = carregarOrcGeral();
+
+  // Detectar categorias do Nibo que não estão nas seções fixas (adiciona dinamicamente)
+  const catsFixas = new Set(ORC_GERAL_SECOES.flatMap(s => s.cats));
+  const extraRec  = Object.keys(REAL.categoriasRec||{}).filter(c => !catsFixas.has(c));
+  const extraDesp = Object.keys(REAL.categorias||{}).filter(c => !catsFixas.has(c));
+
+  const mesHeadersPR = MESES.map(m => `
+    <th class="th-mes" style="background:#f0fdf8;color:#15803d" title="Planejado ${m}">P</th>
+    <th class="th-mes" style="background:#f0f9ff;color:#0369a1" title="Realizado ${m}">R</th>`).join('');
+
+  function realVal(cat, m, tipo) {
+    if (tipo === 'rec') return (REAL.categoriasRec[cat]||[])[m] || 0;
+    return (REAL.categorias[cat]||[])[m] || 0;
+  }
+
+  function catRow(cat, tipo) {
+    const safeAttr = cat.replace(/"/g,'&quot;');
+    let cells = '';
+    let totalP = 0, totalR = 0;
+    for (let m = 0; m < 12; m++) {
+      const p = (plan[cat]||[])[m] || 0;
+      const r = realVal(cat, m, tipo);
+      totalP += p; totalR += r;
+      const delta = p > 0 ? ((r-p)/p*100) : null;
+      const dHtml = delta !== null
+        ? `<div class="orc-delta ${delta>=0?'pos':'neg'}">${delta>=0?'+':''}${delta.toFixed(0)}%</div>`
+        : '';
+      cells += `<td style="padding:4px;min-width:70px">
+        <input type="number" class="orc-input orc-geral-input" data-cat="${safeAttr}" data-mes="${m}"
+          value="${p}" min="0" step="1" title="Planejado ${MESES[m]}">
+        <input type="number" class="orc-input auto" value="${r.toFixed(0)}" title="Realizado ${MESES[m]}">
+        ${dHtml}
+      </td>`;
+    }
+    const deltaT = totalP>0 ? ((totalR-totalP)/totalP*100) : null;
+    const deltaTHtml = deltaT!==null
+      ? `<span class="orc-delta ${deltaT>=0?'pos':'neg'}" style="font-size:10px">${deltaT>=0?'+':''}${deltaT.toFixed(0)}%</span>` : '';
+    cells += `<td style="padding:4px;min-width:80px;background:#f9fafb">
+      <div style="font-size:11px;font-weight:700;color:#374151">${fmtK(totalP)}</div>
+      <div style="font-size:11px;color:#0369a1">${fmtK(totalR)}</div>
+      ${deltaTHtml}
+    </td>`;
+    return `<tr><td class="td-kpi-label">${cat}</td>${cells}</tr>`;
+  }
+
+  function totalRow(label, cats, tipo, style) {
+    let cells = '';
+    let grandP = 0, grandR = 0;
+    for (let m = 0; m < 12; m++) {
+      let p = 0, r = 0;
+      for (const c of cats) { p += (plan[c]||[])[m]||0; r += realVal(c,m,tipo); }
+      grandP += p; grandR += r;
+      cells += `<td style="padding:6px 4px;background:${style.bg}">
+        <div style="font-size:11px;font-weight:700;color:${style.pColor}">${fmtK(p)}</div>
+        <div style="font-size:11px;color:${style.rColor}">${fmtK(r)}</div>
+      </td>`;
+    }
+    cells += `<td style="padding:6px 4px;background:${style.bg}">
+      <div style="font-size:12px;font-weight:700;color:${style.pColor}">${fmtK(grandP)}</div>
+      <div style="font-size:12px;color:${style.rColor}">${fmtK(grandR)}</div>
+    </td>`;
+    return `<tr><td class="td-kpi-label" style="background:${style.bg};color:${style.pColor};font-weight:700">${label}</td>${cells}</tr>`;
+  }
+
+  let tbody = '';
+  // Seções fixas
+  for (const sec of ORC_GERAL_SECOES) {
+    const allCats = sec.id==='rec' ? [...sec.cats,...extraRec]
+                  : sec.id==='desp' ? [...sec.cats,...extraDesp]
+                  : sec.cats;
+    tbody += `<tr class="orc-section-header"><td colspan="26" style="text-align:left">${sec.label}</td></tr>`;
+    for (const c of allCats) tbody += catRow(c, sec.tipo);
+    // Subtotal por seção
+    if (sec.id==='rec')  tbody += totalRow('▸ Total Receita Bruta', allCats, 'rec',  {bg:'#f0fdf8',pColor:'#15803d',rColor:'#0369a1'});
+    if (sec.id==='ded')  tbody += totalRow('▸ Total Deduções',       allCats, 'desp', {bg:'#fff7ed',pColor:'#c2410c',rColor:'#0369a1'});
+    if (sec.id==='cus')  tbody += totalRow('▸ Total Custos',          allCats, 'desp', {bg:'#fef3c7',pColor:'#92400e',rColor:'#0369a1'});
+    if (sec.id==='desp') tbody += totalRow('▸ Total Despesas Op.',    allCats, 'desp', {bg:'#fef3c7',pColor:'#92400e',rColor:'#0369a1'});
+    if (sec.id==='inv')  tbody += totalRow('▸ Total Investimentos',   allCats, 'inv',  {bg:'#f1f5f9',pColor:'#475569',rColor:'#0369a1'});
+  }
+
+  // Resultado operacional (Receita - Deduções - Custos - Despesas)
+  const catsRec  = [...ORC_GERAL_SECOES.find(s=>s.id==='rec').cats,  ...extraRec];
+  const catsDed  = ORC_GERAL_SECOES.find(s=>s.id==='ded').cats;
+  const catsCus  = ORC_GERAL_SECOES.find(s=>s.id==='cus').cats;
+  const catsDesp = [...ORC_GERAL_SECOES.find(s=>s.id==='desp').cats, ...extraDesp];
+  let resCells = '';
+  let resTotalP = 0, resTotalR = 0;
+  for (let m = 0; m < 12; m++) {
+    const pRec = catsRec.reduce((s,c)=>(s+(plan[c]||[])[m]||0),0);
+    const rRec = catsRec.reduce((s,c)=>s+realVal(c,m,'rec'),0);
+    const pDed = [...catsDed,...catsCus,...catsDesp].reduce((s,c)=>(s+(plan[c]||[])[m]||0),0);
+    const rDed = [...catsDed,...catsCus,...catsDesp].reduce((s,c)=>s+realVal(c,m,'desp'),0);
+    const resP = pRec-pDed, resR = rRec-rDed;
+    resTotalP += resP; resTotalR += resR;
+    resCells += `<td style="padding:6px 4px;background:#eff6ff">
+      <div style="font-size:11px;font-weight:700;color:${resP>=0?'#1d4ed8':'#dc2626'}">${fmtK(resP)}</div>
+      <div style="font-size:11px;color:${resR>=0?'#15803d':'#dc2626'}">${fmtK(resR)}</div>
+    </td>`;
+  }
+  resCells += `<td style="padding:6px 4px;background:#eff6ff">
+    <div style="font-size:12px;font-weight:700;color:${resTotalP>=0?'#1d4ed8':'#dc2626'}">${fmtK(resTotalP)}</div>
+    <div style="font-size:12px;color:${resTotalR>=0?'#15803d':'#dc2626'}">${fmtK(resTotalR)}</div>
+  </td>`;
+  tbody += `<tr class="orc-section-header"><td colspan="26">RESULTADO OPERACIONAL</td></tr>
+    <tr><td class="td-kpi-label" style="background:#eff6ff;font-weight:700">Resultado Operacional</td>${resCells}</tr>`;
+
+  document.getElementById('orc-container').innerHTML = `
+    <div style="background:white;border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--shadow)">
+      <div style="padding:0.75rem 1.25rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
+        <span style="font-size:13px;font-weight:700;color:var(--text)">Planejamento Orçamentário 2026</span>
+        <span style="font-size:11px;color:var(--text2);margin-left:4px">— verde claro = Planejado (P) | azul claro = Realizado (R) automático do Nibo</span>
+      </div>
+      <div class="table-wrap">
+        <table class="orc-table">
+          <thead><tr>
+            <th class="th-kpi">Categoria</th>
+            ${mesHeadersPR}
+            <th class="th-mes" style="min-width:80px;background:#f9fafb">Total</th>
+          </tr></thead>
+          <tbody>${tbody}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
 
 function carregarOrcamento() {
   const saved = localStorage.getItem('c3x_orcamento_v1');
@@ -1696,31 +1885,40 @@ function salvarOrcamento() {
 
 function renderOrcamento() {
   const ccsComMovimento = Object.keys(CC_DATA).filter(cc => CC_DATA[cc].desp.some(v => v > 0));
-  if (!ccsComMovimento.length) {
-    document.getElementById('orc-container').innerHTML = '<p style="color:var(--text2);font-size:13px">Nenhum centro de custo com movimento encontrado.</p>';
-    return;
-  }
 
-  // Chips de seleção de CC
-  if (!ORC_CC_ATIVO) ORC_CC_ATIVO = ccsComMovimento[0];
   const chipsEl = document.getElementById('orc-cc-chips');
-  chipsEl.innerHTML = ccsComMovimento.map(cc => `
-    <button onclick="selecionarOrcCC('${cc.replace(/'/g, "\\'")}', this)"
-      style="padding:6px 14px;border-radius:20px;border:1px solid ${ORC_CC_ATIVO===cc?'var(--green)':'var(--border)'};
-             background:${ORC_CC_ATIVO===cc?'var(--green)':'white'};
-             color:${ORC_CC_ATIVO===cc?'white':'var(--text2)'};
-             font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">
-      ${cc}
-    </button>`).join('');
+  const chipStyle = (ativo) =>
+    `padding:6px 14px;border-radius:20px;border:1px solid ${ativo?'var(--green)':'var(--border)'};` +
+    `background:${ativo?'var(--green)':'white'};color:${ativo?'white':'var(--text2)'};` +
+    `font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif`;
 
-  renderOrcTabela(ORC_CC_ATIVO);
+  const geralAtivo = ORC_ABA === '__geral__';
+  let chipsHtml = `<button onclick="selecionarOrcAba('__geral__')" style="${chipStyle(geralAtivo)}">Geral</button>`;
+  if (ccsComMovimento.length) {
+    if (ORC_ABA !== '__geral__' && !ccsComMovimento.includes(ORC_ABA)) ORC_ABA = ccsComMovimento[0];
+    chipsHtml += ccsComMovimento.map(cc => `
+      <button onclick="selecionarOrcAba('${cc.replace(/'/g, "\\'")}')" style="${chipStyle(ORC_ABA===cc)}">${cc}</button>`
+    ).join('');
+  }
+  chipsEl.innerHTML = chipsHtml;
+
+  if (ORC_ABA === '__geral__') {
+    renderOrcGeral();
+  } else {
+    ORC_CC_ATIVO = ORC_ABA;
+    renderOrcTabela(ORC_CC_ATIVO);
+  }
 }
 
-function selecionarOrcCC(cc, el) {
+function selecionarOrcAba(aba) {
   // Salvar antes de trocar
-  salvarOrcamento();
-  ORC_CC_ATIVO = cc;
+  if (ORC_ABA === '__geral__') salvarOrcGeral(); else salvarOrcamento();
+  ORC_ABA = aba;
   renderOrcamento();
+}
+
+function selecionarOrcCC(cc) {
+  selecionarOrcAba(cc);
 }
 
 function renderOrcTabela(cc) {
