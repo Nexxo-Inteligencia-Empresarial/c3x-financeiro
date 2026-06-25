@@ -1113,7 +1113,7 @@ function renderMensal() {
     const n = cc.toLowerCase();
     const cached = JSON.parse(localStorage.getItem('c3x_nibo_cats_v2') || '{"rec":[],"desp":[],"secoes":{}}');
     const secsAPI = cached.secoes || {};
-    // Receita cats = rec[] de seções mapeadas como recTarget:'rec' (receita e despesas op.)
+    // Receita cats = rec[] de seções mapeadas como recTarget:'rec' ou 'outrec'
     const recTargetSecs = /receita|despesa/i;
     const baseCats = Object.keys(secsAPI).length > 0
       ? Object.entries(secsAPI).filter(([k]) => recTargetSecs.test(k)).flatMap(([,v]) => v.rec || [])
@@ -1833,7 +1833,7 @@ function renderOrcGeral() {
   const NIBO_SEC_MAP = [
     { re:/receita/i,      recTarget:'rec', despTarget:'ded'  }, // Receitas operacionais: in→RECEITAS, out→DEDUÇÕES
     { re:/custo/i,        recTarget:null,  despTarget:'cus'  }, // Custos operacionais → CUSTOS
-    { re:/despesa/i,      recTarget:'rec', despTarget:'desp' }, // Despesas op.+outras rec.: in→RECEITAS, out→DESPESAS
+    { re:/despesa/i,      recTarget:'outrec', despTarget:'desp' }, // Despesas op.+outras rec.: in→OUTRAS RECEITAS, out→DESPESAS
     { re:/investimento/i, recTarget:null,  despTarget:'inv'  }, // Atividades de investimento → INVESTIMENTOS
     { re:/financiamento/i,recTarget:null,  despTarget:'inv'  }, // Atividades de financiamento → INVESTIMENTOS
   ];
@@ -1843,6 +1843,7 @@ function renderOrcGeral() {
     ded:  { id:'ded',  label:'DEDUÇÕES DA RECEITA',   tipo:'desp', sub:{ bg:'#fff7ed', color:'#c2410c', label:'▸ Total Deduções' }},
     cus:  { id:'cus',  label:'CUSTOS DOS SERVIÇOS',   tipo:'desp', sub:{ bg:'#fef3c7', color:'#92400e', label:'▸ Total Custos' }},
     desp: { id:'desp', label:'DESPESAS OPERACIONAIS', tipo:'desp', sub:{ bg:'#fef3c7', color:'#92400e', label:'▸ Total Despesas Op.' }},
+    outrec:{ id:'outrec', label:'OUTRAS RECEITAS',       tipo:'rec',  sub:{ bg:'#ecfdf5', color:'#065f46', label:'▸ Total Outras Receitas' }},
     inv:  { id:'inv',  label:'INVESTIMENTOS',         tipo:'inv',  sub:{ bg:'#f1f5f9', color:'#475569', label:'▸ Total Investimentos' }},
   };
 
@@ -1872,7 +1873,7 @@ function renderOrcGeral() {
       }
     }
 
-    const ORDER = ['rec','ded','cus','desp','inv'];
+    const ORDER = ['rec','ded','cus','desp','outrec','inv'];
     const known = ORDER.map(id => byId[id]).filter(Boolean);
     const extra = Object.values(byId).filter(s => !ORDER.includes(s.id));
     secoesRender = [...known, ...extra];
