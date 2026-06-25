@@ -2016,7 +2016,7 @@ function carregarOrcamento() {
 function salvarOrcamento(silent=false) {
   const inputs = document.querySelectorAll('.orc-row-input');
   if (!inputs.length) return; // nada renderizado ainda — não sobrescrever
-  const data = {};
+  const data = carregarOrcamento(); // carrega todos os CCs existentes antes de atualizar
   inputs.forEach(inp => {
     const cc   = inp.dataset.cc;
     const kpi  = inp.dataset.kpi;
