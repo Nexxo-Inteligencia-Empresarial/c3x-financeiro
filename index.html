@@ -788,25 +788,24 @@ async function carregarCategoriasNibo() {
       if (isRec) rec.push(nome); else desp.push(nome);
 
       const parentRaw = cat.parentCategory || cat.parent || cat.parentGroup || cat.group || cat.section || null;
-      const secNome = parentRaw
+      const secNomeBase = parentRaw
         ? (typeof parentRaw === 'object' ? (parentRaw.name || parentRaw.categoryName || '') : String(parentRaw))
         : '';
-      if (secNome.trim()) {
-        const k = secNome.trim();
+      // Usa group + subgroup como chave para granularidade: "Receitas operacionais / Outras receitas"
+      const subGrupo = (cat.subgroupName || cat.subgroupDescription || '').trim();
+      const secNome = secNomeBase.trim();
+      if (secNome) {
+        const k = subGrupo ? `${secNome} / ${subGrupo}` : secNome;
         if (!secoes[k]) secoes[k] = { rec: [], desp: [] };
         const arr = isRec ? secoes[k].rec : secoes[k].desp;
         if (!arr.includes(nome)) arr.push(nome);
       }
     }
 
-    localStorage.setItem('c3x_nibo_cats_v3', JSON.stringify({ rec, desp, secoes }));
+    localStorage.setItem('c3x_nibo_cats_v4', JSON.stringify({ rec, desp, secoes }));
     const nSecs = Object.keys(secoes).length;
     console.log(`[Nibo cats] seções encontradas: ${nSecs}`);
-    if (nSecs > 0) {
-      console.log('[Nibo cats] seções:', Object.keys(secoes).map(s => `"${s}" rec:${secoes[s].rec.length} desp:${secoes[s].desp.length}`).join(' | '));
-    } else {
-      console.warn('[Nibo cats] NENHUMA seção detectada — campo pai não reconhecido. Inspecione o sample item acima.');
-    }
+    console.log('[Nibo cats] seções:', Object.keys(secoes).map(s => `"${s}" rec:${secoes[s].rec.length} desp:${secoes[s].desp.length}`).join('\n  '));
   } catch(e) {
     console.warn('[Nibo cats] ERRO na API de categorias:', e.message, e);
   }
@@ -914,12 +913,12 @@ async function carregarNibo() {
 
   // Enriquecer cache de categorias com as vistas nos lançamentos desta sessão
   try {
-    const cached2 = JSON.parse(localStorage.getItem('c3x_nibo_cats_v3') || '{"rec":[],"desp":[],"secoes":{}}');
+    const cached2 = JSON.parse(localStorage.getItem('c3x_nibo_cats_v4') || '{"rec":[],"desp":[],"secoes":{}}');
     const setRec  = new Set([...cached2.rec,  ...Object.keys(REAL.categoriasRec||{})]);
     const setDesp = new Set([...cached2.desp, ...Object.keys(REAL.categorias||{})]);
     cached2.rec  = [...setRec];
     cached2.desp = [...setDesp];
-    localStorage.setItem('c3x_nibo_cats_v3', JSON.stringify(cached2));
+    localStorage.setItem('c3x_nibo_cats_v4', JSON.stringify(cached2));
   } catch(e) {}
 }
 
@@ -1120,7 +1119,7 @@ function renderMensal() {
   function projRecCC(cc) {
     const plan = carregarOrcGeral();
     const n = cc.toLowerCase();
-    const cached = JSON.parse(localStorage.getItem('c3x_nibo_cats_v3') || '{"rec":[],"desp":[],"secoes":{}}');
+    const cached = JSON.parse(localStorage.getItem('c3x_nibo_cats_v4') || '{"rec":[],"desp":[],"secoes":{}}');
     const secsAPI = cached.secoes || {};
     // Receita cats = rec[] de seções mapeadas como recTarget:'rec' ou 'outrec'
     const recTargetSecs = /receita|despesa/i;
@@ -1834,17 +1833,20 @@ function salvarOrcGeral(silent=false) {
 
 function renderOrcGeral() {
   const plan = carregarOrcGeral();
-  const cached = JSON.parse(localStorage.getItem('c3x_nibo_cats_v3') || '{"rec":[],"desp":[],"secoes":{}}');
+  const cached = JSON.parse(localStorage.getItem('c3x_nibo_cats_v4') || '{"rec":[],"desp":[],"secoes":{}}');
   const secoesAPI = cached.secoes || {};
 
   // Mapeamento: seção Nibo → display. Cada seção pode ter cats rec e desp separadas.
   // rec = para RECEITAS, desp = para CUSTOS/DESPESAS conforme o tipo da seção Nibo.
   const NIBO_SEC_MAP = [
-    { re:/receita/i,      recTarget:'rec', despTarget:'desp' }, // Receitas operacionais: in→RECEITAS, out→DESPESAS (deduções misturadas com despesas no Nibo)
-    { re:/custo/i,        recTarget:null,  despTarget:'cus'  }, // Custos operacionais → CUSTOS
-    { re:/despesa/i,      recTarget:'outrec', despTarget:'desp' }, // Despesas op.+outras rec.: in→OUTRAS RECEITAS, out→DESPESAS
-    { re:/investimento/i, recTarget:null,  despTarget:'inv'  }, // Atividades de investimento → INVESTIMENTOS
-    { re:/financiamento/i,recTarget:null,  despTarget:'inv'  }, // Atividades de financiamento → INVESTIMENTOS
+    // Regras específicas primeiro (subgrupos "Outras receitas" dentro de qualquer seção)
+    { re:/outras receitas/i, recTarget:'outrec', despTarget:'desp' }, // "Outras receitas" (subgrupo ou seção) → OUTRAS RECEITAS
+    // Regras por seção Nibo
+    { re:/receita/i,         recTarget:'rec',    despTarget:'desp' }, // "Receitas operacionais / <subgrupo>" → RECEITAS
+    { re:/custo/i,           recTarget:null,     despTarget:'cus'  }, // "Custos operacionais" → CUSTOS
+    { re:/despesa/i,         recTarget:'outrec', despTarget:'desp' }, // "Despesas operacionais" → OUTRAS RECEITAS (in) + DESPESAS (out)
+    { re:/investimento/i,    recTarget:null,     despTarget:'inv'  },
+    { re:/financiamento/i,   recTarget:null,     despTarget:'inv'  },
   ];
 
   const DISPLAY_DEFS = {
