@@ -782,15 +782,24 @@ async function carregarCategoriasNibo() {
 
       if (isRec) rec.push(nome); else desp.push(nome);
 
-      const secNome = (cat.pai?.name || cat.parentCategory?.name || cat.parent?.name || '').trim();
-      if (secNome) {
-        if (!secoes[secNome]) secoes[secNome] = { tipo: isRec ? 'rec' : 'desp', cats: [] };
-        if (!secoes[secNome].cats.includes(nome)) secoes[secNome].cats.push(nome);
+      // Detecta nome da seção pai — campo pode ser objeto {name:...} ou string direta
+      const parentRaw = cat.parentCategory || cat.parent || cat.parentGroup || cat.group || cat.section || null;
+      const secNome = parentRaw
+        ? (typeof parentRaw === 'object' ? (parentRaw.name || parentRaw.categoryName || '') : String(parentRaw))
+        : '';
+      if (secNome.trim()) {
+        const k = secNome.trim();
+        if (!secoes[k]) secoes[k] = { tipo: isRec ? 'rec' : 'desp', cats: [] };
+        if (!secoes[k].cats.includes(nome)) secoes[k].cats.push(nome);
       }
     }
 
     localStorage.setItem('c3x_nibo_cats_v1', JSON.stringify({ rec, desp, secoes }));
-    console.log('[Nibo] Seções:', Object.keys(secoes).map(s => `"${s}" (${secoes[s].cats.length})`).join(' | '));
+    const secsLog = Object.keys(secoes);
+    console.log('[Nibo] Seções detectadas:', secsLog.length ? secsLog.map(s => `"${s}" (${secoes[s].cats.length})`).join(' | ') : '⚠️ NENHUMA — campo pai não encontrado');
+    if (!secsLog.length && items.length > 0) {
+      console.log('[Nibo] Campos do 1º item:', Object.keys(items[0]));
+    }
   } catch(e) {
     console.warn('[Nibo] API de categorias indisponível, usando cache:', e.message);
   }
