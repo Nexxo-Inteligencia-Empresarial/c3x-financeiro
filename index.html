@@ -764,11 +764,39 @@ async function niboGetAll(endpoint, params={}) {
 /* ═══════════════════════════════════════════
    CARREGAR DADOS DO NIBO
 ═══════════════════════════════════════════ */
+async function carregarCategoriasNibo() {
+  // Busca todas as categorias configuradas no Nibo (inclusive sem lançamentos)
+  // e salva no localStorage para uso offline
+  try {
+    const data = await niboGet('categories');
+    const items = data.items || data || [];
+    if (!Array.isArray(items) || items.length === 0) return;
+
+    const rec  = [];
+    const desp = [];
+    for (const cat of items) {
+      const nome = cat.name || cat.categoryName || cat.description || '';
+      if (!nome) continue;
+      // categoryType: 1 = receita, 2 = despesa (padrão Nibo)
+      const tipo = cat.categoryType ?? cat.type ?? 0;
+      if (tipo === 1 || String(tipo).toLowerCase() === 'credit')  rec.push(nome);
+      else desp.push(nome);
+    }
+    localStorage.setItem('c3x_nibo_cats_v1', JSON.stringify({ rec, desp }));
+    console.log('[Nibo] Categorias carregadas — rec:', rec.length, '| desp:', desp.length);
+  } catch(e) {
+    console.warn('[Nibo] API de categorias indisponível, usando cache:', e.message);
+  }
+}
+
 async function carregarNibo() {
   const loaderEl = document.getElementById('loader-label');
   // Inclui dueDate 2024-2026: itens de anos anteriores podem ser pagos em 2026
   // A filtragem por paymentDate=2026 é feita no cliente (regime de caixa)
   const filtro = {'$orderby':'dueDate','$filter':'(year(dueDate) eq 2026 or year(dueDate) eq 2025 or year(dueDate) eq 2024)'};
+
+  loaderEl.textContent = 'Buscando categorias...';
+  await carregarCategoriasNibo();
 
   loaderEl.textContent = 'Buscando receitas...';
   const creditData = await niboGetAll('schedules/credit', filtro);
@@ -860,6 +888,14 @@ async function carregarNibo() {
   for (const cc of Object.keys(CC_DATA)) {
     for (let i=0;i<12;i++) REAL.custos[i] += CC_DATA[cc].desp[i];
   }
+
+  // Enriquecer cache de categorias com as vistas nos lançamentos desta sessão
+  try {
+    const cached2 = JSON.parse(localStorage.getItem('c3x_nibo_cats_v1') || '{"rec":[],"desp":[]}');
+    const setRec  = new Set([...cached2.rec,  ...Object.keys(REAL.categoriasRec||{})]);
+    const setDesp = new Set([...cached2.desp, ...Object.keys(REAL.categorias||{})]);
+    localStorage.setItem('c3x_nibo_cats_v1', JSON.stringify({ rec:[...setRec], desp:[...setDesp] }));
+  } catch(e) {}
 }
 
 /* ═══════════════════════════════════════════
@@ -1738,10 +1774,14 @@ function salvarOrcGeral() {
 function renderOrcGeral() {
   const plan = carregarOrcGeral();
 
-  // Categorias do Nibo ainda não nas seções fixas (adicionadas dinamicamente após carga)
   const catsFixas = new Set(ORC_GERAL_SECOES.flatMap(s => s.cats));
-  const extraRec  = Object.keys(REAL.categoriasRec||{}).filter(c => !catsFixas.has(c));
-  const extraDesp = Object.keys(REAL.categorias||{}).filter(c => !catsFixas.has(c));
+
+  // Combinar: API de categorias (cache) + lançamentos da sessão atual
+  const cached = JSON.parse(localStorage.getItem('c3x_nibo_cats_v1') || '{"rec":[],"desp":[]}');
+  const allRecNibo  = new Set([...cached.rec,  ...Object.keys(REAL.categoriasRec||{})]);
+  const allDespNibo = new Set([...cached.desp, ...Object.keys(REAL.categorias||{})]);
+  const extraRec    = [...allRecNibo].filter(c => !catsFixas.has(c));
+  const extraDesp   = [...allDespNibo].filter(c => !catsFixas.has(c));
 
   // Cabeçalho com meses
   const mesHeaders = MESES.map(m =>
