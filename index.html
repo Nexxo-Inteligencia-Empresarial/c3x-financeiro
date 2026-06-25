@@ -902,6 +902,8 @@ async function carregarNibo() {
    RENDER PÁGINAS
 ═══════════════════════════════════════════ */
 function renderTudo() {
+  // Salvar estado atual do orçamento antes de re-renderizar (evita perda ao trocar período/mês)
+  if (ORC_ABA === '__geral__') salvarOrcGeral(true); else salvarOrcamento(true);
   renderVisao();
   renderCategorias();
   renderMensal();
@@ -1779,17 +1781,21 @@ function carregarOrcGeral() {
   return s ? JSON.parse(s) : {};
 }
 
-function salvarOrcGeral() {
+function salvarOrcGeral(silent=false) {
+  const inputs = document.querySelectorAll('.orc-geral-input');
+  if (!inputs.length) return; // nada renderizado ainda — não sobrescrever
   const data = {};
-  document.querySelectorAll('.orc-geral-input').forEach(inp => {
+  inputs.forEach(inp => {
     const cat = inp.dataset.cat;
     const mes = parseInt(inp.dataset.mes);
     if (!data[cat]) data[cat] = Array(12).fill(0);
     data[cat][mes] = parseFloat(inp.value) || 0;
   });
   localStorage.setItem('c3x_orc_geral_v1', JSON.stringify(data));
-  const msg = document.getElementById('orc-saved-msg');
-  if (msg) { msg.style.display='inline'; setTimeout(()=>msg.style.display='none',2000); }
+  if (!silent) {
+    const msg = document.getElementById('orc-saved-msg');
+    if (msg) { msg.style.display='inline'; setTimeout(()=>msg.style.display='none',2000); }
+  }
 }
 
 function renderOrcGeral() {
@@ -1817,7 +1823,7 @@ function renderOrcGeral() {
       total += v;
       cells += `<td style="padding:3px;min-width:72px">
         <input type="number" class="orc-input orc-geral-input" data-cat="${safe}" data-mes="${m}"
-          value="${v || ''}" min="0" step="1" placeholder="—">
+          value="${v || ''}" min="0" step="1" placeholder="—" oninput="salvarOrcGeral(true)">
       </td>`;
     }
     const totalFmt = total > 0 ? fmtK(total) : '—';
@@ -1912,20 +1918,24 @@ function carregarOrcamento() {
   return saved ? JSON.parse(saved) : {};
 }
 
-function salvarOrcamento() {
+function salvarOrcamento(silent=false) {
+  const inputs = document.querySelectorAll('.orc-row-input');
+  if (!inputs.length) return; // nada renderizado ainda — não sobrescrever
   const data = {};
-  document.querySelectorAll('.orc-row-input').forEach(inp => {
+  inputs.forEach(inp => {
     const cc   = inp.dataset.cc;
     const kpi  = inp.dataset.kpi;
-    const tipo = inp.dataset.tipo; // 'plan' ou 'real'
+    const tipo = inp.dataset.tipo;
     const mes  = parseInt(inp.dataset.mes);
     if (!data[cc]) data[cc] = {};
     if (!data[cc][kpi]) data[cc][kpi] = { plan: Array(12).fill(0), real: Array(12).fill(0) };
     data[cc][kpi][tipo][mes] = parseFloat(inp.value) || 0;
   });
   localStorage.setItem('c3x_orcamento_v1', JSON.stringify(data));
-  const msg = document.getElementById('orc-saved-msg');
-  if (msg) { msg.style.display = 'inline'; setTimeout(() => msg.style.display = 'none', 2000); }
+  if (!silent) {
+    const msg = document.getElementById('orc-saved-msg');
+    if (msg) { msg.style.display = 'inline'; setTimeout(() => msg.style.display = 'none', 2000); }
+  }
 }
 
 function renderOrcamento() {
@@ -1998,13 +2008,13 @@ function renderOrcTabela(cc) {
           <input type="number" class="orc-input orc-row-input"
             data-cc="${cc}" data-kpi="${kpi.id}" data-tipo="plan" data-mes="${m}"
             value="${planVal}" min="0" step="${kpi.unit==='%'?'0.1':'1'}"
-            title="Planejado ${MESES[m]}">
+            title="Planejado ${MESES[m]}" oninput="salvarOrcamento(true)">
           ${kpi.autoReal
             ? `<input type="number" class="orc-input auto" value="${realVal.toFixed(kpi.unit==='%'?1:0)}" title="${kpi.autoDesc} ${MESES[m]}">`
             : `<input type="number" class="orc-input realizado orc-row-input"
                 data-cc="${cc}" data-kpi="${kpi.id}" data-tipo="real" data-mes="${m}"
                 value="${realVal}" min="0" step="${kpi.unit==='%'?'0.1':'1'}"
-                title="Realizado ${MESES[m]}">`}
+                title="Realizado ${MESES[m]}" oninput="salvarOrcamento(true)">`}
           ${deltaHtml}
         </td>`;
     }
@@ -2040,7 +2050,7 @@ function renderOrcTabela(cc) {
       <input type="number" class="orc-input orc-row-input"
         data-cc="${cc}" data-kpi="meta_desp" data-tipo="plan" data-mes="${i}"
         value="${planVal || ''}" min="0" step="1" placeholder="—"
-        title="Meta de Despesas ${MESES[i]}">
+        title="Meta de Despesas ${MESES[i]}" oninput="salvarOrcamento(true)">
       <input type="number" class="orc-input auto" value="${realVal.toFixed(0)}" title="Custos reais Nibo ${MESES[i]}">
       ${deltaHtml}
     </td>`;
