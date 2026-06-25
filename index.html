@@ -1513,11 +1513,10 @@ function abrirCC(cc) {
   document.getElementById('servico-cc-title').textContent = cc;
   document.getElementById('page-servicos-cc').dataset.cc = cc;
 
-  const desp    = sumRange(CC_DATA[cc]?.desp||Array(12).fill(0), from, to);
-  const recPago = CC_RECEITA[cc] ? sumRange(CC_RECEITA[cc], from, to) : 0;
+  const desp   = sumRange(CC_DATA[cc]?.desp||Array(12).fill(0), from, to);
+  const rec    = CC_RECEITA[cc] ? sumRange(CC_RECEITA[cc], from, to) : 0; // regime de caixa: só recebido
   const inadimCC = sumRange((CC_INADIM[cc]?.porMes || Array(12).fill(0)), from, to);
-  const rec  = recPago + inadimCC; // Receita Total = Recebido + Inadimplência
-  const res  = rec - desp;
+  const res    = rec - desp;
   const margem = rec > 0 ? (res/rec)*100 : 0;
 
   // KPIs do período
