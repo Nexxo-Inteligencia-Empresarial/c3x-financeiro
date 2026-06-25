@@ -1884,7 +1884,7 @@ function renderOrcGeral() {
       }
     }
 
-    const ORDER = ['rec','ded','cus','desp','outrec','inv'];
+    const ORDER = ['rec','outrec','ded','cus','desp','inv'];
     const known = ORDER.map(id => byId[id]).filter(Boolean);
     const extra = Object.values(byId).filter(s => !ORDER.includes(s.id));
     secoesRender = [...known, ...extra];
