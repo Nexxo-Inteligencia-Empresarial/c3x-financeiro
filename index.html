@@ -1563,11 +1563,17 @@ function abrirCC(cc) {
   // Receita total = recebido + inadimplência (base para ARPU, Ticket, Atingimento Meta)
   const recTotal = rec + inadimCC;
 
-  // KPIs calculados (sem dependência de seleção — layout fixo)
-  const margemCalc  = rec > 0      ? (rec - desp) / rec * 100    : null;
-  const arpu        = unidades > 0 ? recTotal / unidades          : null;
-  const inadim_pct  = recTotal > 0 ? inadim / recTotal * 100      : null;
-  const ating_meta  = meta_rec > 0 ? recTotal / meta_rec * 100    : null;
+  const sel = kpisSel;
+
+  // KPIs calculados
+  const margemCalc  = rec > 0      ? (rec - desp) / rec * 100       : null;
+  const arpu        = unidades > 0 ? recTotal / unidades             : null;
+  const inadim_pct  = recTotal > 0 ? inadim / recTotal * 100         : null;
+  const ating_meta  = meta_rec > 0 ? recTotal / meta_rec * 100       : null;
+  const ticket      = unidades > 0 ? recTotal / unidades             : null;
+  const cac         = novos > 0    ? desp / novos                    : null;
+  const roi         = desp > 0     ? res / desp * 100                : null;
+  const mrr_churn   = churnVal !== null && unidades > 0 ? churnVal * (recTotal / unidades) : null;
 
   const kpiCard = (label, value, sub, cor, full=false) =>
     `<div class="kpi-card"${full?' style="grid-column:1/-1;max-width:280px"':''}>
@@ -1578,19 +1584,26 @@ function abrirCC(cc) {
 
   document.getElementById('servico-cc-kpis').innerHTML = `
     <style>#servico-cc-kpis{grid-template-columns:repeat(4,1fr)}</style>
-    ${kpiCard('Receita recebida',    fmtFull(rec),                                         'regime de caixa',       'var(--green)')}
-    ${kpiCard('Despesa total',       fmtFull(desp),                                        'no período',            'var(--red)')}
-    ${kpiCard('Resultado',           fmtFull(res),                                         'recebida − despesa',    res>=0?'var(--green)':'var(--red)')}
-    ${kpiCard('Margem %',            margemCalc!==null?margemCalc.toFixed(1)+'%':'—',      'contribuição',          (margemCalc||0)>=40?'var(--green)':'var(--amber)')}
-    ${kpiCard('Receita total',       fmtFull(recTotal),                                    'recebida + inadimp.',   'var(--green)')}
-    ${kpiCard('Meta de Receita',     meta_rec!==null?fmtFull(meta_rec):'—',               'Orç. Geral',            '#7c3aed')}
-    ${kpiCard('Atingimento Meta %',  ating_meta!==null?ating_meta.toFixed(1)+'%':'Sem meta cadastrada', 'receita total ÷ meta', (ating_meta||0)>=100?'var(--green)':'var(--amber)')}
-    ${kpiCard('ARPU',                arpu!==null?fmtK(arpu):'Precisa de Unidades',        'receita total ÷ clientes','var(--amber)')}
-    ${kpiCard('Unidades / Clientes', unidades!==null?Math.round(unidades).toString():'—', 'ativos no período',     'var(--blue)')}
-    ${kpiCard('Novos no período',    novos!==null?novos.toString():'—',                   'aquisições',            'var(--blue)')}
-    ${kpiCard('Inadimplência',       inadim>0?fmtFull(inadim):'R$ 0,00',                 'vencido não pago',      inadim>0?'var(--red)':'var(--green)')}
-    ${kpiCard('Inadimplência %',     inadim_pct!==null?inadim_pct.toFixed(1)+'%':'—',    'do total faturado',     (inadim_pct||0)>10?'var(--red)':'var(--amber)')}
-    ${kpiCard('MRR',                 mrrManual!==null?fmtK(mrrManual):'—',               'recorrente/mês',        'var(--green)', true)}`;
+    ${kpiCard('Receita recebida',    fmtFull(rec),  'regime de caixa',    'var(--green)')}
+    ${kpiCard('Despesa total',       fmtFull(desp), 'no período',         'var(--red)')}
+    ${kpiCard('Resultado',           fmtFull(res),  'recebida − despesa', res>=0?'var(--green)':'var(--red)')}
+    ${sel.includes('margem')     ? kpiCard('Margem %',           margemCalc!==null?margemCalc.toFixed(1)+'%':'—',     'contribuição',          (margemCalc||0)>=40?'var(--green)':'var(--amber)') : ''}
+    ${inadimCC > 0               ? kpiCard('Receita total',      fmtFull(recTotal),                                   'recebida + inadimp.',   'var(--green)') : ''}
+    ${meta_rec !== null          ? kpiCard('Meta de Receita',    fmtFull(meta_rec),                                   'Orç. Geral',            '#7c3aed') : ''}
+    ${sel.includes('ating_meta') ? kpiCard('Atingimento Meta %', ating_meta!==null?ating_meta.toFixed(1)+'%':'Sem meta', 'receita total ÷ meta', (ating_meta||0)>=100?'var(--green)':'var(--amber)') : ''}
+    ${sel.includes('arpu')       ? kpiCard('ARPU',               arpu!==null?fmtK(arpu):'Precisa de Unidades',        'receita total ÷ clientes','var(--amber)') : ''}
+    ${sel.includes('unidades')   ? kpiCard('Unidades / Clientes',unidades!==null?Math.round(unidades).toString():'—', 'ativos no período',     'var(--blue)') : ''}
+    ${sel.includes('novos')      ? kpiCard('Novos no período',   novos!==null?novos.toString():'—',                   'aquisições',            'var(--blue)') : ''}
+    ${sel.includes('inadim')     ? kpiCard('Inadimplência',      inadim>0?fmtFull(inadim):'R$ 0,00',                 'vencido não pago',      inadim>0?'var(--red)':'var(--green)') : ''}
+    ${sel.includes('inadim_pct') ? kpiCard('Inadimplência %',    inadim_pct!==null?inadim_pct.toFixed(1)+'%':'—',    'do total faturado',     (inadim_pct||0)>10?'var(--red)':'var(--amber)') : ''}
+    ${sel.includes('mrr')        ? kpiCard('MRR',                mrrManual!==null?fmtK(mrrManual):'—',               'recorrente/mês',        'var(--green)', true) : ''}
+    ${sel.includes('churn')      ? kpiCard('Churn',              churnVal!==null?churnVal.toString():'—',             'cancelamentos',         'var(--red)') : ''}
+    ${sel.includes('conversao')  ? kpiCard('Conversão %',        conversao!==null?conversao.toFixed(1)+'%':'—',       'leads convertidos',     'var(--amber)') : ''}
+    ${sel.includes('ltv')        ? kpiCard('LTV',                ltvManual!==null?fmtK(ltvManual):'—',               'valor do cliente',      'var(--blue)') : ''}
+    ${sel.includes('ticket')     ? kpiCard('Ticket Médio',       ticket!==null?fmtK(ticket):'Precisa de Unidades',   'receita ÷ clientes',    'var(--amber)') : ''}
+    ${sel.includes('cac')        ? kpiCard('CAC',                cac!==null?fmtK(cac):'Precisa de Novos',            'despesa ÷ novos',       'var(--red)') : ''}
+    ${sel.includes('roi')        ? kpiCard('ROI %',              roi!==null?roi.toFixed(1)+'%':'—',                  '(rec − desp) ÷ desp',   roi!==null&&roi>=0?'var(--green)':'var(--red)') : ''}
+    ${sel.includes('mrr_churn')  ? kpiCard('MRR Churn',          mrr_churn!==null?fmtK(mrr_churn):'Precisa de Churn+Unid.','churn × ticket médio', 'var(--red)') : ''}`;
 
   // Gráfico de despesas
   const labels = MESES.slice(from, to+1);
