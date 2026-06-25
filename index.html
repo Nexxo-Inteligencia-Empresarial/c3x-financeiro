@@ -1840,7 +1840,7 @@ function renderOrcGeral() {
   // Mapeamento: seção Nibo → display. Cada seção pode ter cats rec e desp separadas.
   // rec = para RECEITAS, desp = para CUSTOS/DESPESAS conforme o tipo da seção Nibo.
   const NIBO_SEC_MAP = [
-    { re:/receita/i,      recTarget:'rec', despTarget:'ded'  }, // Receitas operacionais: in→RECEITAS, out→DEDUÇÕES
+    { re:/receita/i,      recTarget:'rec', despTarget:'desp' }, // Receitas operacionais: in→RECEITAS, out→DESPESAS (deduções misturadas com despesas no Nibo)
     { re:/custo/i,        recTarget:null,  despTarget:'cus'  }, // Custos operacionais → CUSTOS
     { re:/despesa/i,      recTarget:'outrec', despTarget:'desp' }, // Despesas op.+outras rec.: in→OUTRAS RECEITAS, out→DESPESAS
     { re:/investimento/i, recTarget:null,  despTarget:'inv'  }, // Atividades de investimento → INVESTIMENTOS
