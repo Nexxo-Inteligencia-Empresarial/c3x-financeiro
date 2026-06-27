@@ -1429,12 +1429,13 @@ function gerarResumoPeriodo(isGeral, cc, from, to) {
   const sBadge = atingTotal !== null && atingTotal >= 95 && totalRes >= 0 ? 'verde'
                : atingTotal !== null && atingTotal >= 75 ? 'amarelo'
                : 'vermelho';
+  const dotCor = sBadge === 'verde' ? 'var(--green)' : sBadge === 'amarelo' ? 'var(--amber)' : 'var(--red)';
 
-  return `<div class="diag-card" style="border-left:4px solid #7c3aed;margin-bottom:1.5rem">
-    <div class="diag-card-header" style="background:#faf5ff">
+  return `<div class="diag-card" style="margin-bottom:1.5rem">
+    <div class="diag-card-header">
       <div style="display:flex;align-items:center;gap:10px">
-        <span style="font-size:18px">📊</span>
-        <span class="diag-mes-label" style="color:#7c3aed">RESUMO DO PERÍODO — ${MESES[from]}–${MESES[to]} 2026</span>
+        <div class="diag-mes-dot" style="background:${dotCor}"></div>
+        <span class="diag-mes-label">RESUMO DO PERÍODO — ${MESES[from]}–${MESES[to]} 2026</span>
       </div>
       ${diagSaudeBadge(sBadge)}
     </div>
