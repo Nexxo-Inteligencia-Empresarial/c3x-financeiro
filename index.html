@@ -1049,8 +1049,8 @@ function diagSaude(rec, desp, ating, margem) {
   return 'verde';
 }
 
-// Análise do negócio geral para um mês
-function gerarAnaliseGeral(mes) {
+// Análise profunda do negócio geral — respeita período selecionado
+function gerarAnaliseGeral(mes, from, to) {
   const rec      = REAL.receita[mes]  || 0;
   const desp     = REAL.despesa[mes]  || 0;
   const recProj  = PROJ.receita[mes]  || 0;
@@ -1059,193 +1059,408 @@ function gerarAnaliseGeral(mes) {
   const margem   = rec > 0 ? (rec - desp) / rec * 100 : null;
   const ating    = recProj > 0 ? rec / recProj * 100 : null;
 
-  const prev     = mes > 0 ? mes - 1 : -1;
-  const recPrev  = prev >= 0 ? (REAL.receita[prev]  || 0) : 0;
-  const despPrev = prev >= 0 ? (REAL.despesa[prev] || 0) : 0;
-  const momRec   = recPrev  > 0 ? (rec  - recPrev)  / recPrev  * 100 : null;
-  const momDesp  = despPrev > 0 ? (desp - despPrev) / despPrev * 100 : null;
-
-  const inadimMes = Object.values(CC_INADIM).reduce((s, cc) => s + (cc.porMes[mes] || 0), 0);
-
   if (rec === 0 && desp === 0) return null;
+
+  const prevMes   = mes > 0 ? mes - 1 : -1;
+  const recPrev   = prevMes >= 0 ? (REAL.receita[prevMes]  || 0) : 0;
+  const despPrev  = prevMes >= 0 ? (REAL.despesa[prevMes] || 0) : 0;
+  const momRec    = recPrev  > 0 ? (rec  - recPrev)  / recPrev  * 100 : null;
+  const momDesp   = despPrev > 0 ? (desp - despPrev) / despPrev * 100 : null;
+  const margemPrev = recPrev > 0 && despPrev > 0 ? (recPrev - despPrev) / recPrev * 100 : null;
+  const deltaMarg = margem !== null && margemPrev !== null ? margem - margemPrev : null;
+
+  const ytdRec     = sumRange(REAL.receita, from, mes);
+  const ytdRecProj = sumRange(PROJ.receita, from, mes);
+  const ytdDesp    = sumRange(REAL.despesa, from, mes);
+  const ytdRes     = ytdRec - ytdDesp;
+
+  const inadimMes  = Object.values(CC_INADIM).reduce((s, cc) => s + (cc.porMes[mes] || 0), 0);
+  const inadimTotal = INADIM_ITENS.reduce((s, i) => s + i.valor, 0);
+
+  // Streak de crescimento/queda
+  let streak = 0, streakTipo = null;
+  for (let m = mes; m > Math.max(0, mes - 5); m--) {
+    const diff = (REAL.receita[m] || 0) - (REAL.receita[m - 1] || 0);
+    if (m === mes) { streakTipo = diff >= 0 ? 'crescimento' : 'queda'; streak = 1; }
+    else if ((diff >= 0) === (streakTipo === 'crescimento')) streak++;
+    else break;
+  }
+
+  // Ranking de CCs no mês
+  const allCCs = Object.keys(CC_RECEITA || {});
+  const ranking = allCCs.map(cc => ({
+    cc,
+    rec:  CC_RECEITA[cc]?.[mes] || 0,
+    desp: CC_DATA[cc]?.desp[mes] || 0,
+  })).filter(c => c.rec > 0 || c.desp > 0).sort((a, b) => b.rec - a.rec);
 
   const saude = diagSaude(rec, desp, ating, margem);
   const paras = [], recs = [];
+  let tableHtml = '';
 
-  // § Receita
+  // § 1 — RECEITA E CRESCIMENTO
   {
     let p = '';
+    const gapR = Math.abs(rec - recProj);
     if (ating !== null) {
-      const gap = Math.abs(ating - 100).toFixed(1);
       if (ating >= 100) {
-        p = `A receita recebida de <strong>${fmtFull(rec)}</strong> superou a projeção em <strong>${gap}%</strong> (meta: ${fmtFull(recProj)})`;
+        p = `🟢 Receita recebida de <strong>${fmtFull(rec)}</strong> superou a projeção de ${fmtFull(recProj)} em <strong>+${(ating - 100).toFixed(1)}%</strong> (+${fmtFull(gapR)})`;
       } else if (ating >= 90) {
-        p = `A receita recebida de <strong>${fmtFull(rec)}</strong> ficou <strong>${gap}%</strong> abaixo da projeção de ${fmtFull(recProj)}, desempenho dentro da faixa aceitável`;
+        p = `Receita recebida de <strong>${fmtFull(rec)}</strong>, ficou <strong>${(100 - ating).toFixed(1)}%</strong> abaixo da projeção de ${fmtFull(recProj)} (gap de ${fmtFull(gapR)}) — desempenho dentro da faixa aceitável`;
       } else if (ating >= 75) {
-        p = `A receita recebida de <strong>${fmtFull(rec)}</strong> atingiu ${ating.toFixed(1)}% da meta de ${fmtFull(recProj)}, ficando ${fmtFull(recProj - rec)} abaixo do projetado — desvio relevante que merece investigação`;
-        recs.push(`Lacuna de receita de ${fmtFull(recProj - rec)} — revisar pipeline comercial e estratégias de conversão para recuperar o gap no acumulado.`);
+        p = `⚠️ Receita recebida de <strong>${fmtFull(rec)}</strong> atingiu <strong>${ating.toFixed(1)}%</strong> da meta de ${fmtFull(recProj)} — lacuna de <strong>${fmtFull(gapR)}</strong> que requer investigação imediata`;
+        recs.push(`Lacuna de receita de ${fmtFull(gapR)}: mapear quais centros e clientes não performaram e acionar plano de recuperação.`);
       } else {
-        p = `A receita recebida de <strong>${fmtFull(rec)}</strong> atingiu apenas <strong>${ating.toFixed(1)}%</strong> da meta de ${fmtFull(recProj)}, desvio crítico de ${fmtFull(recProj - rec)}`;
-        recs.push(`Desvio crítico de receita: apenas ${ating.toFixed(1)}% da meta atingida. Acionar plano de emergência comercial e revisar premissas do orçamento.`);
+        p = `🔴 Receita recebida de <strong>${fmtFull(rec)}</strong> — apenas <strong>${ating.toFixed(1)}%</strong> da meta de ${fmtFull(recProj)}, desvio crítico de <strong>${fmtFull(gapR)}</strong>`;
+        recs.push(`Desvio crítico: ${ating.toFixed(1)}% da meta — acionar plano de emergência comercial e revisar premissas do orçamento.`);
       }
     } else {
-      p = `A receita recebida totalizou <strong>${fmtFull(rec)}</strong> no período`;
+      p = `Receita recebida: <strong>${fmtFull(rec)}</strong>`;
     }
     if (momRec !== null && recPrev > 0) {
       const sinal = momRec >= 0 ? '+' : '';
-      const obs = momRec >= 15 ? ', forte crescimento sequencial' : momRec >= 5 ? ', trajetória de crescimento saudável' : momRec >= -5 ? ', desempenho estável' : momRec >= -15 ? ', leve recuo frente ao mês anterior' : ', queda sequencial relevante que requer atenção';
-      p += ` (variação mensal: <strong>${sinal}${momRec.toFixed(1)}%</strong>${obs})`;
+      const obs = momRec >= 20 ? 'forte expansão' : momRec >= 8 ? 'crescimento sólido' : momRec >= 0 ? 'leve crescimento' : momRec >= -8 ? 'leve retração' : momRec >= -20 ? 'retração relevante' : 'queda expressiva';
+      p += `. Variação MoM: <strong>${sinal}${momRec.toFixed(1)}%</strong> (${sinal}${fmtFull(Math.abs(rec - recPrev))}) — ${obs}`;
     }
+    if (streak >= 2) p += `. Tendência: <em>${streak} meses consecutivos de ${streakTipo}</em>`;
     paras.push(p + '.');
   }
 
-  // § Custos e Margem
+  // § 2 — ACUMULADO DO PERÍODO
+  if (mes > from && ytdRecProj > 0) {
+    const ytdA = ytdRec / ytdRecProj * 100;
+    let p = `Acumulado ${MESES[from]}–${MESES[mes]}: receita de <strong>${fmtFull(ytdRec)}</strong> vs meta de <strong>${fmtFull(ytdRecProj)}</strong> — atingimento de <strong>${ytdA.toFixed(1)}%</strong>`;
+    p += `. Resultado acumulado: <strong style="color:${ytdRes >= 0 ? 'var(--green)' : 'var(--red)'}">${fmtFull(ytdRes)}</strong>`;
+    paras.push(p + '.');
+  }
+
+  // § 3 — ESTRUTURA DE CUSTOS
   if (desp > 0) {
-    let p = `As despesas operacionais totalizaram <strong>${fmtFull(desp)}</strong>`;
+    let p = `Despesas operacionais: <strong>${fmtFull(desp)}</strong>`;
     if (despProj > 0) {
       const despVar = (desp / despProj - 1) * 100;
-      if (despVar > 20) {
-        p += `, <strong>${despVar.toFixed(1)}%</strong> acima do orçado — extrapolação preocupante`;
-        recs.push(`Despesas ${despVar.toFixed(1)}% acima do orçado — identificar centros de custo com maior desvio e aplicar contingenciamento.`);
-      } else if (despVar > 10) {
-        p += `, ${despVar.toFixed(1)}% acima do orçado`;
-      } else if (despVar < -15) {
-        p += `, com expressiva contenção de ${Math.abs(despVar).toFixed(1)}% abaixo do orçado — excelente disciplina de custos`;
-      } else if (despVar < -5) {
-        p += `, ${Math.abs(despVar).toFixed(1)}% abaixo do orçado, refletindo boa gestão de custos`;
-      } else {
-        p += `, dentro do orçado`;
-      }
+      p += despVar > 0
+        ? ` (<strong>+${despVar.toFixed(1)}%</strong> vs orçado de ${fmtFull(despProj)})`
+        : ` (${despVar.toFixed(1)}% vs orçado de ${fmtFull(despProj)})`;
+      if (despVar > 20) recs.push(`Despesas ${despVar.toFixed(1)}% acima do orçado — identificar centro com maior desvio e aplicar contingenciamento imediato.`);
     }
-    if (margem !== null) {
-      const mObs = margem >= 55 ? `nível excepcional — cada R$1,00 de receita gera R$${(margem/100).toFixed(2)} de margem`
-                  : margem >= 45 ? `patamar saudável, bem acima da referência de 40%`
-                  : margem >= 40 ? `no limite superior do alvo de 40%, operação equilibrada`
-                  : margem >= 30 ? `abaixo do alvo de 40%, sinalizando pressão de custos sobre a operação`
-                  : margem >= 15 ? `em nível preocupante — custos estão consumindo ${(100-margem).toFixed(1)}% da receita`
-                  : `crítico — a estrutura de custos é insustentável no modelo atual`;
-      p += `. Margem de contribuição de <strong>${margem.toFixed(1)}%</strong> — ${mObs}`;
-      if (margem < 40) recs.push(`Margem de ${margem.toFixed(1)}% abaixo da meta de 40%: revisar precificação e/ou estrutura de custos variáveis.`);
+    if (rec > 0) {
+      const costRatio = desp / rec;
+      p += `. Para cada <strong>R$1,00 de receita, R$${costRatio.toFixed(2)} vai para despesas</strong> (${(costRatio * 100).toFixed(1)}%)`;
     }
-    if (momDesp !== null && despPrev > 0 && Math.abs(momDesp) > 10) {
-      p += `. As despesas ${momDesp > 0 ? 'cresceram' : 'recuaram'} ${Math.abs(momDesp).toFixed(1)}% em relação ao mês anterior`;
+    if (momDesp !== null && despPrev > 0 && Math.abs(momDesp) > 5) {
+      p += `. Despesas ${momDesp > 0 ? 'cresceram' : 'recuaram'} <strong>${Math.abs(momDesp).toFixed(1)}%</strong> MoM`;
+      if (momDesp > 20) recs.push(`Aceleração de custos +${momDesp.toFixed(1)}% MoM — verificar se há lançamentos não recorrentes ou crescimento estrutural de custos.`);
+    }
+    if (ranking.length > 0) {
+      const topCCDesp = [...ranking].sort((a, b) => b.desp - a.desp)[0];
+      if (topCCDesp && topCCDesp.desp > 0 && desp > 0)
+        p += `. Maior custo: <strong>${topCCDesp.cc}</strong> com ${fmtFull(topCCDesp.desp)} (${(topCCDesp.desp / desp * 100).toFixed(1)}% do total)`;
     }
     paras.push(p + '.');
   }
 
-  // § Resultado e Inadimplência
+  // § 4 — RENTABILIDADE
   {
     let p = '';
     if (res >= 0) {
-      const pefic = rec > 0 ? (res / rec * 100).toFixed(1) : 0;
-      p = `O resultado operacional foi <strong>superavitário em ${fmtFull(res)}</strong> (${pefic}% da receita), demonstrando capacidade de geração de caixa`;
+      p = `Resultado operacional: <strong>superavitário em ${fmtFull(res)}</strong>`;
+      if (rec > 0) p += ` — cada R$1,00 de receita gera <strong>R$${(res / rec).toFixed(2)} líquido</strong>`;
     } else {
-      p = `O resultado operacional foi <strong>deficitário em ${fmtFull(Math.abs(res))}</strong>, indicando que as despesas superaram a receita recebida no período`;
-      recs.push('Resultado negativo: avaliar alocação de custos fixos e acelerar captação de receita para recuperar o equilíbrio operacional.');
+      p = `Resultado operacional: <strong>deficitário em ${fmtFull(Math.abs(res))}</strong> — despesas superam a receita recebida`;
+      recs.push(`Resultado negativo de ${fmtFull(Math.abs(res))}: avaliar corte de custos variáveis e/ou acelerar ações de receita.`);
     }
-    if (inadimMes > 0) {
-      const totalFat = rec + inadimMes;
-      const pctI = totalFat > 0 ? inadimMes / totalFat * 100 : 0;
-      p += `. A inadimplência gerada no mês somou <strong>${fmtFull(inadimMes)}</strong>`;
-      if (pctI > 15) {
-        p += ` (${pctI.toFixed(1)}% do faturamento bruto), nível crítico que compromete materialmente o fluxo de caixa`;
-        recs.push(`Inadimplência de ${pctI.toFixed(1)}% é crítica — acionar cobrança imediata e avaliar renegociação dos maiores devedores.`);
-      } else if (pctI > 8) {
-        p += ` (${pctI.toFixed(1)}% do faturamento bruto), nível elevado que merece acompanhamento ativo da carteira`;
-        recs.push(`Inadimplência de ${pctI.toFixed(1)}%: intensificar rotina de cobrança e mapear devedores com risco de insolvência.`);
-      } else {
-        p += ` (${pctI.toFixed(1)}% do faturamento), dentro de patamar administrável`;
+    if (margem !== null) {
+      const zone = margem >= 55 ? '🟢 Excelente' : margem >= 45 ? '🟢 Saudável' : margem >= 40 ? '🟡 Adequada' : margem >= 30 ? '🟡 Atenção' : '🔴 Crítica';
+      p += `. Margem: <strong>${margem.toFixed(1)}%</strong> [${zone}]`;
+      if (deltaMarg !== null && Math.abs(deltaMarg) > 2) {
+        p += `, ${deltaMarg > 0 ? 'expansão' : 'contração'} de <strong>${Math.abs(deltaMarg).toFixed(1)} pp</strong> vs ${MESES[prevMes]}`;
+        if (deltaMarg < -5) recs.push(`Contração de margem de ${Math.abs(deltaMarg).toFixed(1)} pp MoM: investigar mix de receita ou aumento de custos variáveis.`);
       }
+      if (margem < 40) recs.push(`Margem de ${margem.toFixed(1)}% abaixo de 40%: revisar precificação ou reduzir custos variáveis para atingir o alvo mínimo.`);
     }
+    if (inadimMes > 0) p += `. Resultado potencial sem inadimplência: <strong>${fmtFull(res + inadimMes)}</strong> (+${fmtFull(inadimMes)})`;
     paras.push(p + '.');
   }
 
-  return { saude, paras, recs, metrics: { rec, recProj, desp, despProj, res, margem, ating, inadimMes } };
+  // § 5 — INADIMPLÊNCIA E RISCO
+  if (inadimMes > 0 || inadimTotal > 0) {
+    let p = '';
+    if (inadimMes > 0) {
+      const totalFat = rec + inadimMes;
+      const pctI = totalFat > 0 ? inadimMes / totalFat * 100 : 0;
+      const nivel = pctI > 15 ? '🔴 Crítico' : pctI > 8 ? '🟡 Atenção' : '🟢 Controlado';
+      p = `Inadimplência gerada no mês: <strong>${fmtFull(inadimMes)}</strong> — ${pctI.toFixed(1)}% do faturamento bruto [${nivel}]`;
+      if (pctI > 15) recs.push(`Inadimplência crítica (${pctI.toFixed(1)}%): acionar cobrança imediata nos maiores devedores.`);
+      else if (pctI > 8) recs.push(`Inadimplência de ${pctI.toFixed(1)}%: intensificar cobrança e mapear risco de insolvência dos maiores expostos.`);
+    }
+    if (inadimTotal > 0) {
+      if (p) p += '. ';
+      const b30v  = INADIM_ITENS.filter(i => i.diasAtraso <= 30).reduce((s, i) => s + i.valor, 0);
+      const b60v  = INADIM_ITENS.filter(i => i.diasAtraso > 30 && i.diasAtraso <= 60).reduce((s, i) => s + i.valor, 0);
+      const b90v  = INADIM_ITENS.filter(i => i.diasAtraso > 60 && i.diasAtraso <= 90).reduce((s, i) => s + i.valor, 0);
+      const b90pv = INADIM_ITENS.filter(i => i.diasAtraso > 90).reduce((s, i) => s + i.valor, 0);
+      p += `Carteira total em aberto: <strong>${fmtFull(inadimTotal)}</strong>`;
+      const agParts = [];
+      if (b30v  > 0) agParts.push(`≤30d: ${fmtFull(b30v)}`);
+      if (b60v  > 0) agParts.push(`31–60d: ${fmtFull(b60v)}`);
+      if (b90v  > 0) agParts.push(`61–90d: ${fmtFull(b90v)}`);
+      if (b90pv > 0) agParts.push(`<span style="color:var(--red)">+90d: <strong>${fmtFull(b90pv)}</strong> ⚠️</span>`);
+      if (agParts.length > 0) p += ` (${agParts.join(' · ')})`;
+      if (b90pv > 0) recs.push(`Carteira +90 dias de ${fmtFull(b90pv)}: avaliar provisão para devedores duvidosos e cobrança extrajudicial.`);
+      const top3 = [...INADIM_ITENS].sort((a, b) => b.valor - a.valor).slice(0, 3);
+      if (top3.length > 0)
+        p += `. Top devedores: ${top3.map(d => `<strong>${d.cliente}</strong> ${fmtFull(d.valor)} (${d.diasAtraso}d, ${d.cc})`).join(' | ')}`;
+    }
+    if (p) paras.push(p + '.');
+  }
+
+  // § 6 — TABELA CC RANKING
+  if (ranking.length > 1) {
+    const totRecR = ranking.reduce((s, c) => s + c.rec, 0);
+    const rows = ranking.map(c => {
+      const pct = totRecR > 0 ? c.rec / totRecR * 100 : 0;
+      const m   = c.rec > 0 ? (c.rec - c.desp) / c.rec * 100 : null;
+      const mCor = m === null ? 'var(--text2)' : m >= 40 ? 'var(--green)' : m >= 20 ? 'var(--amber)' : 'var(--red)';
+      const r   = c.rec - c.desp;
+      return `<tr>
+        <td style="font-weight:600;padding:6px 10px;font-size:12px">${c.cc}</td>
+        <td style="padding:6px 10px;color:var(--green);font-size:12px">${fmtFull(c.rec)}</td>
+        <td style="padding:6px 10px;font-size:12px;color:var(--text2)">${pct.toFixed(1)}%</td>
+        <td style="padding:6px 10px;color:var(--red);font-size:12px">${fmtFull(c.desp)}</td>
+        <td style="padding:6px 10px;font-weight:600;font-size:12px;color:${r >= 0 ? 'var(--green)' : 'var(--red)'}">${fmtFull(r)}</td>
+        <td style="padding:6px 10px;font-weight:600;font-size:12px;color:${mCor}">${m !== null ? m.toFixed(1) + '%' : '—'}</td>
+      </tr>`;
+    }).join('');
+    tableHtml = `<div style="margin-top:16px">
+      <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">🏢 Performance por Centro de Custo</div>
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">
+        <thead><tr style="background:#f9fafb">
+          <th style="padding:5px 10px;text-align:left;color:var(--text2);font-weight:600;font-size:11px">Centro</th>
+          <th style="padding:5px 10px;text-align:left;color:var(--text2);font-weight:600;font-size:11px">Receita</th>
+          <th style="padding:5px 10px;text-align:left;color:var(--text2);font-weight:600;font-size:11px">% Total</th>
+          <th style="padding:5px 10px;text-align:left;color:var(--text2);font-weight:600;font-size:11px">Despesa</th>
+          <th style="padding:5px 10px;text-align:left;color:var(--text2);font-weight:600;font-size:11px">Resultado</th>
+          <th style="padding:5px 10px;text-align:left;color:var(--text2);font-weight:600;font-size:11px">Margem</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+    </div>`;
+  }
+
+  return { saude, paras, recs, tableHtml, metrics: { rec, recProj, desp, despProj, res, margem, ating, inadimMes } };
 }
 
-// Análise de um CC específico para um mês
-function gerarAnaliseCC(cc, mes) {
-  const rec   = CC_RECEITA[cc] ? (CC_RECEITA[cc][mes] || 0) : 0;
-  const desp  = CC_DATA[cc]    ? (CC_DATA[cc].desp[mes] || 0) : 0;
-  const res   = rec - desp;
+// Análise profunda de um CC específico — respeita período selecionado
+function gerarAnaliseCC(cc, mes, from, to) {
+  const rec    = CC_RECEITA[cc] ? (CC_RECEITA[cc][mes] || 0) : 0;
+  const desp   = CC_DATA[cc]    ? (CC_DATA[cc].desp[mes] || 0) : 0;
+  const res    = rec - desp;
   const margem = rec > 0 ? (rec - desp) / rec * 100 : null;
 
-  const prev     = mes > 0 ? mes - 1 : -1;
-  const recPrev  = prev >= 0 && CC_RECEITA[cc] ? (CC_RECEITA[cc][prev] || 0) : 0;
-  const momRec   = recPrev > 0 ? (rec - recPrev) / recPrev * 100 : null;
+  const prevMes    = mes > 0 ? mes - 1 : -1;
+  const recPrev    = prevMes >= 0 && CC_RECEITA[cc] ? (CC_RECEITA[cc][prevMes] || 0) : 0;
+  const despPrev   = prevMes >= 0 && CC_DATA[cc]    ? (CC_DATA[cc].desp[prevMes] || 0) : 0;
+  const momRec     = recPrev  > 0 ? (rec  - recPrev)  / recPrev  * 100 : null;
+  const momDesp    = despPrev > 0 ? (desp - despPrev) / despPrev * 100 : null;
+  const margemPrev = recPrev > 0 && despPrev > 0 ? (recPrev - despPrev) / recPrev * 100 : null;
+  const deltaMarg  = margem !== null && margemPrev !== null ? margem - margemPrev : null;
 
-  const inadimMes = CC_INADIM[cc] ? (CC_INADIM[cc].porMes[mes] || 0) : 0;
-  const metaRec   = projRecCC(cc, mes);
-  const recTotal  = rec + inadimMes;
-  const atingMeta = metaRec ? (recTotal / metaRec * 100) : null;
+  const inadimMes   = CC_INADIM[cc] ? (CC_INADIM[cc].porMes[mes] || 0) : 0;
+  const metaRec     = projRecCC(cc, mes);
+  const recTotal    = rec + inadimMes;
+  const atingMeta   = metaRec ? (recTotal / metaRec * 100) : null;
 
-  const recGeral    = REAL.receita[mes] || 0;
-  const contribPct  = recGeral > 0 && rec > 0 ? rec / recGeral * 100 : null;
+  const recGeral    = REAL.receita[mes]  || 0;
+  const despGeral   = REAL.despesa[mes] || 0;
+  const contribPct  = recGeral  > 0 && rec  > 0 ? rec  / recGeral  * 100 : null;
+  const despContrib = despGeral > 0 && desp > 0 ? desp / despGeral * 100 : null;
+
+  const ccRecArr   = CC_RECEITA[cc] || Array(12).fill(0);
+  const ccDespArr  = CC_DATA[cc]?.desp || Array(12).fill(0);
+  const ytdRecCC   = sumRange(ccRecArr,  from, mes);
+  const ytdDespCC  = sumRange(ccDespArr, from, mes);
+  const ytdResCC   = ytdRecCC - ytdDespCC;
+
+  const inadimCC      = INADIM_ITENS.filter(i => i.cc === cc);
+  const inadimCCTotal = inadimCC.reduce((s, i) => s + i.valor, 0);
 
   if (rec === 0 && desp === 0) return null;
 
   const saude = diagSaude(rec, desp, atingMeta, margem);
   const paras = [], recs = [];
+  let tableHtml = '';
 
-  // § Receita e posição no negócio
+  // § 1 — RECEITA E POSIÇÃO
   {
     let p = '';
     if (rec > 0) {
-      p = `A receita recebida foi de <strong>${fmtFull(rec)}</strong>`;
-      if (contribPct !== null) p += `, representando <strong>${contribPct.toFixed(1)}%</strong> da receita total do negócio no mês`;
+      p = `Receita recebida: <strong>${fmtFull(rec)}</strong>`;
+      if (contribPct !== null) p += ` — <strong>${contribPct.toFixed(1)}%</strong> da receita total do negócio em ${MESES_FULL[mes]}`;
       if (momRec !== null && recPrev > 0) {
         const sinal = momRec >= 0 ? '+' : '';
-        const obs = momRec >= 20 ? ', crescimento expressivo' : momRec >= 5 ? ', trajetória positiva' : momRec >= -5 ? ', desempenho estável' : momRec >= -20 ? ', recuo que merece monitoramento' : ', queda relevante';
-        p += ` (MoM: <strong>${sinal}${momRec.toFixed(1)}%</strong>${obs})`;
+        const obs = momRec >= 20 ? 'forte crescimento' : momRec >= 8 ? 'crescimento sólido' : momRec >= 0 ? 'leve crescimento' : momRec >= -15 ? 'recuo moderado' : 'queda relevante';
+        p += `. MoM: <strong>${sinal}${momRec.toFixed(1)}%</strong> (${sinal}${fmtFull(Math.abs(rec - recPrev))}) — ${obs}`;
       }
     } else {
-      p = `Nenhuma receita foi recebida em ${MESES_FULL[mes]}`;
-      if (desp > 0) recs.push('Centro sem receita no mês — avaliar timing de recebimentos e verificar se há lançamentos pendentes de baixa no Nibo.');
+      p = `Nenhuma receita foi recebida por este centro em ${MESES_FULL[mes]}`;
+      if (desp > 0) recs.push(`Sem receita mas com despesas de ${fmtFull(desp)}: verificar timing de recebimentos e lançamentos pendentes no Nibo.`);
     }
     if (metaRec && atingMeta !== null) {
+      const gapMeta = Math.abs(recTotal - metaRec);
       if (atingMeta >= 100) {
-        p += `. A receita total (recebida + inadimplência) de ${fmtFull(recTotal)} atingiu <strong>${atingMeta.toFixed(1)}%</strong> da meta — resultado acima do esperado`;
+        p += `. <strong>Meta superada</strong>: receita total ${fmtFull(recTotal)} vs meta ${fmtFull(metaRec)} (<strong>${atingMeta.toFixed(1)}%</strong>)`;
       } else if (atingMeta >= 85) {
-        p += `. A receita total atingiu <strong>${atingMeta.toFixed(1)}%</strong> da meta de ${fmtFull(metaRec)}, desempenho próximo ao planejado`;
+        p += `. Atingimento de <strong>${atingMeta.toFixed(1)}%</strong> da meta (${fmtFull(metaRec)}) — gap de ${fmtFull(gapMeta)}`;
       } else {
-        p += `. A receita total atingiu apenas <strong>${atingMeta.toFixed(1)}%</strong> da meta de ${fmtFull(metaRec)}, gap de ${fmtFull(metaRec - recTotal)}`;
-        recs.push(`Atingimento de ${atingMeta.toFixed(1)}% da meta — revisar estratégia de captação e conversão para este centro.`);
+        p += `. Atingimento crítico de <strong>${atingMeta.toFixed(1)}%</strong> da meta (${fmtFull(metaRec)}) — gap de ${fmtFull(gapMeta)}`;
+        recs.push(`Apenas ${atingMeta.toFixed(1)}% da meta: revisar estratégia comercial e captação deste centro.`);
       }
     }
     paras.push(p + '.');
   }
 
-  // § Despesas, Margem e Resultado
+  // § 2 — CUSTOS E EFICIÊNCIA
   if (desp > 0) {
-    let p = `As despesas alocadas foram de <strong>${fmtFull(desp)}</strong>`;
-    if (rec > 0 && margem !== null) {
-      if (margem >= 55)       p += `, resultando em margem de contribuição excelente de <strong>${margem.toFixed(1)}%</strong>`;
-      else if (margem >= 40)  p += `, com margem de contribuição saudável de <strong>${margem.toFixed(1)}%</strong>`;
-      else if (margem >= 20)  {
-        p += `, gerando margem de <strong>${margem.toFixed(1)}%</strong> — abaixo do alvo de 40%, indicando que os custos do centro estão elevados em relação à receita`;
-        recs.push(`Margem de ${margem.toFixed(1)}%: analisar composição de custos deste centro e oportunidades de eficiência.`);
-      } else if (margem >= 0) {
-        p += `. A margem de <strong>${margem.toFixed(1)}%</strong> está em nível crítico — quase toda a receita está sendo consumida por despesas`;
-        recs.push(`Margem de ${margem.toFixed(1)}%: estrutura de custos insustentável. Necessário revisão urgente de precificação e/ou corte de despesas.`);
-      } else {
-        p += `. O centro operou no <strong>vermelho</strong> — as despesas superaram a receita em ${fmtFull(Math.abs(res))}`;
-        recs.push(`Resultado negativo: avaliar imediatamente se os custos são fixos ou variáveis e definir plano de reequilíbrio.`);
+    let p = `Despesas alocadas: <strong>${fmtFull(desp)}</strong>`;
+    if (despContrib !== null) p += ` (${despContrib.toFixed(1)}% das despesas totais do negócio)`;
+    if (momDesp !== null && despPrev > 0 && Math.abs(momDesp) > 5)
+      p += `, ${momDesp > 0 ? '+' : ''}${momDesp.toFixed(1)}% MoM`;
+    if (margem !== null) {
+      const zone = margem >= 55 ? '🟢 Excelente' : margem >= 45 ? '🟢 Saudável' : margem >= 40 ? '🟡 Adequada' : margem >= 30 ? '🟡 Atenção' : '🔴 Crítica';
+      p += `. Margem de contribuição: <strong>${margem.toFixed(1)}%</strong> [${zone}]`;
+      if (deltaMarg !== null && Math.abs(deltaMarg) > 2) {
+        p += `, ${deltaMarg > 0 ? '+' : ''}${deltaMarg.toFixed(1)} pp vs ${MESES[prevMes]}`;
+        if (deltaMarg < -5) recs.push(`Queda de ${Math.abs(deltaMarg).toFixed(1)} pp na margem MoM: investigar custos extraordinários ou perda de eficiência.`);
       }
+      if (margem < 0) recs.push(`Centro operando no vermelho com déficit de ${fmtFull(Math.abs(res))} — necessário plano de reequilíbrio imediato.`);
+      else if (margem < 40) recs.push(`Margem de ${margem.toFixed(1)}%: revisar precificação e estrutura de custos para atingir o alvo de 40%.`);
     } else if (rec === 0) {
-      p += `. Sem receita no período, o centro gerou um déficit de ${fmtFull(desp)}`;
-    }
-    if (inadimMes > 0) {
-      p += `. A inadimplência do mês somou <strong>${fmtFull(inadimMes)}</strong>`;
-      if (rec > 0) {
-        const pctI = inadimMes / (rec + inadimMes) * 100;
-        p += ` (${pctI.toFixed(1)}% do faturamento bruto)`;
-        if (pctI > 15) recs.push(`Inadimplência de ${pctI.toFixed(1)}% — priorizar cobrança neste centro de custo.`);
-      }
+      p += `. Sem receita — déficit de <strong>${fmtFull(desp)}</strong>`;
     }
     paras.push(p + '.');
   }
 
-  return { saude, paras, recs, metrics: { rec, desp, res, margem, atingMeta, metaRec, inadimMes } };
+  // § 3 — RESULTADO E ACUMULADO
+  {
+    let p = `Resultado do mês: <strong style="color:${res >= 0 ? 'var(--green)' : 'var(--red)'}">${res >= 0 ? 'superavitário' : 'deficitário'} em ${fmtFull(Math.abs(res))}</strong>`;
+    if (mes > from)
+      p += `. Acumulado ${MESES[from]}–${MESES[mes]}: <strong>${fmtFull(ytdResCC)}</strong> (rec ${fmtFull(ytdRecCC)} − desp ${fmtFull(ytdDespCC)})`;
+    if (inadimMes > 0) p += `. Resultado potencial (sem inadimplência): <strong>${fmtFull(res + inadimMes)}</strong>`;
+    paras.push(p + '.');
+  }
+
+  // § 4 — INADIMPLÊNCIA DO CC
+  if (inadimMes > 0 || inadimCCTotal > 0) {
+    let p = '';
+    if (inadimMes > 0) {
+      const pctI = (rec + inadimMes) > 0 ? inadimMes / (rec + inadimMes) * 100 : 0;
+      const nivel = pctI > 15 ? '🔴 Crítico' : pctI > 8 ? '🟡 Atenção' : '🟢 Controlado';
+      p = `Inadimplência do mês neste centro: <strong>${fmtFull(inadimMes)}</strong> (${pctI.toFixed(1)}% do faturamento) [${nivel}]`;
+      if (pctI > 15) recs.push(`Inadimplência crítica de ${pctI.toFixed(1)}%: priorizar cobrança dos devedores deste centro.`);
+    }
+    if (inadimCCTotal > 0) {
+      if (p) p += '. ';
+      p += `Carteira em aberto neste centro: <strong>${fmtFull(inadimCCTotal)}</strong> (${inadimCC.length} ${inadimCC.length === 1 ? 'registro' : 'registros'})`;
+      const top3CC = [...inadimCC].sort((a, b) => b.valor - a.valor).slice(0, 3);
+      if (top3CC.length > 0)
+        p += `. Maiores devedores: ${top3CC.map(d => `<strong>${d.cliente}</strong> ${fmtFull(d.valor)} (${d.diasAtraso}d)`).join(' · ')}`;
+    }
+    if (p) paras.push(p + '.');
+  }
+
+  // § 5 — POSIÇÃO NO NEGÓCIO
+  if (contribPct !== null) {
+    const resGeral = (REAL.receita[mes] || 0) - (REAL.despesa[mes] || 0);
+    let p = `Posição no negócio em ${MESES_FULL[mes]}: <strong>${contribPct.toFixed(1)}%</strong> da receita total`;
+    if (despContrib !== null) p += ` e <strong>${despContrib.toFixed(1)}%</strong> das despesas totais`;
+    if (resGeral !== 0 && res !== 0) {
+      const contribRes = res / resGeral * 100;
+      p += `. Contribuição ao resultado: <strong>${contribRes >= 0 ? '+' : ''}${contribRes.toFixed(1)}%</strong>`;
+    }
+    paras.push(p + '.');
+  }
+
+  return { saude, paras, recs, tableHtml, metrics: { rec, desp, res, margem, atingMeta, metaRec, inadimMes } };
+}
+
+// Card de resumo do período — exibido acima dos cards mensais quando há >1 mês
+function gerarResumoPeriodo(isGeral, cc, from, to) {
+  if (from === to) return '';
+
+  let totalRec = 0, totalRecProj = 0, totalDesp = 0, totalInadimP = 0;
+  let melhMes = -1, melhRec = -Infinity, piorMes = -1, piorRec = Infinity;
+  let mesesComDados = 0;
+
+  for (let m = from; m <= to; m++) {
+    const r   = isGeral ? (REAL.receita[m] || 0) : (CC_RECEITA[cc]?.[m] || 0);
+    const d   = isGeral ? (REAL.despesa[m] || 0) : (CC_DATA[cc]?.desp[m] || 0);
+    const pr  = isGeral ? (PROJ.receita[m] || 0) : (projRecCC(cc, m) || 0);
+    const in_ = isGeral
+      ? Object.values(CC_INADIM).reduce((s, c) => s + (c.porMes[m] || 0), 0)
+      : (CC_INADIM[cc]?.porMes[m] || 0);
+    totalRec += r; totalRecProj += pr; totalDesp += d; totalInadimP += in_;
+    if (r > 0 || d > 0) mesesComDados++;
+    if (r > melhRec) { melhRec = r; melhMes = m; }
+    if (r > 0 && r < piorRec) { piorRec = r; piorMes = m; }
+  }
+
+  if (mesesComDados === 0) return '';
+
+  const totalRes    = totalRec - totalDesp;
+  const margemMedia = totalRec > 0 ? (totalRec - totalDesp) / totalRec * 100 : null;
+  const atingTotal  = totalRecProj > 0 ? totalRec / totalRecProj * 100 : null;
+  const inadimOutst = isGeral
+    ? INADIM_ITENS.reduce((s, i) => s + i.valor, 0)
+    : INADIM_ITENS.filter(i => i.cc === cc).reduce((s, i) => s + i.valor, 0);
+
+  const recArr = [];
+  for (let m = from; m <= to; m++)
+    recArr.push(isGeral ? (REAL.receita[m] || 0) : (CC_RECEITA[cc]?.[m] || 0));
+  const nonZero = recArr.filter(v => v > 0);
+  let tendHtml = '';
+  if (nonZero.length >= 2) {
+    const pctChange = (nonZero[nonZero.length - 1] - nonZero[0]) / nonZero[0] * 100;
+    const cor = pctChange > 5 ? 'var(--green)' : pctChange >= -5 ? 'var(--amber)' : 'var(--red)';
+    const txt = pctChange > 10 ? '↗ Crescimento' : pctChange > 0 ? '↗ Leve crescimento' : pctChange >= -5 ? '→ Estável' : pctChange >= -15 ? '↘ Leve recuo' : '↘ Declínio';
+    tendHtml = `<strong style="color:${cor}">${txt} (${pctChange >= 0 ? '+' : ''}${pctChange.toFixed(1)}%)</strong>`;
+  }
+
+  const sBadge = atingTotal !== null && atingTotal >= 95 && totalRes >= 0 ? 'verde'
+               : atingTotal !== null && atingTotal >= 75 ? 'amarelo'
+               : 'vermelho';
+
+  return `<div class="diag-card" style="border-left:4px solid #7c3aed;margin-bottom:1.5rem">
+    <div class="diag-card-header" style="background:#faf5ff">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:18px">📊</span>
+        <span class="diag-mes-label" style="color:#7c3aed">RESUMO DO PERÍODO — ${MESES[from]}–${MESES[to]} 2026</span>
+      </div>
+      ${diagSaudeBadge(sBadge)}
+    </div>
+    <div class="diag-card-body">
+      <div class="diag-mini-grid" style="grid-template-columns:repeat(5,1fr)">
+        ${diagMini('Receita Total',  fmtFull(totalRec),  'var(--green)')}
+        ${diagMini('Meta Total',     totalRecProj > 0 ? fmtFull(totalRecProj) : '—', 'var(--text2)')}
+        ${diagMini('Atingimento',    atingTotal !== null ? atingTotal.toFixed(1) + '%' : '—', (atingTotal || 0) >= 100 ? 'var(--green)' : (atingTotal || 0) >= 80 ? 'var(--amber)' : 'var(--red)')}
+        ${diagMini('Resultado',      fmtFull(totalRes), totalRes >= 0 ? 'var(--green)' : 'var(--red)')}
+        ${diagMini('Margem Média',   margemMedia !== null ? margemMedia.toFixed(1) + '%' : '—', (margemMedia || 0) >= 40 ? 'var(--green)' : 'var(--amber)')}
+      </div>
+      <p class="diag-para" style="margin-top:12px">
+        ${atingTotal !== null
+          ? `Receita acumulada de <strong>${fmtFull(totalRec)}</strong> de <strong>${MESES_FULL[from]} a ${MESES_FULL[to]} de 2026</strong>, atingindo <strong>${atingTotal.toFixed(1)}%</strong> da meta de ${fmtFull(totalRecProj)}${atingTotal >= 100 ? ` — superando em ${fmtFull(totalRec - totalRecProj)}` : ` — lacuna de ${fmtFull(totalRecProj - totalRec)}`}.`
+          : `Receita acumulada de <strong>${fmtFull(totalRec)}</strong> de <strong>${MESES_FULL[from]} a ${MESES_FULL[to]} de 2026</strong>.`}
+        Resultado operacional acumulado: <strong style="color:${totalRes >= 0 ? 'var(--green)' : 'var(--red)'}">${totalRes >= 0 ? 'superavitário' : 'deficitário'} em ${fmtFull(Math.abs(totalRes))}</strong>${margemMedia !== null ? `, margem média de <strong>${margemMedia.toFixed(1)}%</strong>` : ''}.
+        ${tendHtml ? `Tendência de receita no período: ${tendHtml}.` : ''}
+      </p>
+      ${melhMes >= 0 && piorMes >= 0 && melhMes !== piorMes
+        ? `<p class="diag-para">Melhor mês: <strong>${MESES_FULL[melhMes]}</strong> (${fmtFull(melhRec)}) · Menor receita: <strong>${MESES_FULL[piorMes]}</strong> (${fmtFull(piorRec)}).</p>`
+        : ''}
+      ${totalInadimP > 0 || inadimOutst > 0
+        ? `<p class="diag-para">Inadimplência gerada no período: <strong>${fmtFull(totalInadimP)}</strong>. Carteira total em aberto: <strong>${fmtFull(inadimOutst)}</strong>.</p>`
+        : ''}
+    </div>
+  </div>`;
 }
 
 function diagSetAba(aba, el) {
@@ -1258,39 +1473,45 @@ function diagSetAba(aba, el) {
 function diagRenderConteudo() {
   const container = document.getElementById('diag-content');
   if (!container) return;
+
+  const [from, to] = periodoMeses();
   const isGeral = DIAG_ABA === 'geral';
+
+  const resumo = gerarResumoPeriodo(isGeral, DIAG_ABA, from, to);
   const cards = [];
 
-  for (let mes = 0; mes < 12; mes++) {
-    const analise = isGeral ? gerarAnaliseGeral(mes) : gerarAnaliseCC(DIAG_ABA, mes);
+  for (let mes = from; mes <= to; mes++) {
+    const analise = isGeral ? gerarAnaliseGeral(mes, from, to) : gerarAnaliseCC(DIAG_ABA, mes, from, to);
     if (!analise) continue;
 
-    const { saude, paras, recs, metrics } = analise;
-    const { rec, recProj, desp, despProj, res, margem, ating, atingMeta, inadimMes } = metrics;
+    const { saude, paras, recs, tableHtml, metrics } = analise;
+    const { rec, recProj, desp, res, margem, atingMeta, inadimMes } = metrics;
 
-    const col = (v, pos, neg) => (v||0) >= 0 ? pos : neg;
+    const col = (v) => (v || 0) >= 0 ? 'var(--green)' : 'var(--red)';
     const miniGrid = isGeral
-      ? `<div class="diag-mini-grid">
+      ? `<div class="diag-mini-grid" style="grid-template-columns:repeat(5,1fr)">
           ${diagMini('Receita',    fmtFull(rec),    'var(--green)')}
+          ${diagMini('Meta',       recProj > 0 ? fmtFull(recProj) : '—', 'var(--text2)')}
           ${diagMini('Despesa',    fmtFull(desp),   'var(--red)')}
-          ${diagMini('Resultado',  fmtFull(res),    col(res,'var(--green)','var(--red)'))}
-          ${diagMini('Margem',     margem!==null ? margem.toFixed(1)+'%' : '—', (margem||0)>=40?'var(--green)':'var(--amber)')}
+          ${diagMini('Resultado',  fmtFull(res),    col(res))}
+          ${diagMini('Margem',     margem !== null ? margem.toFixed(1) + '%' : '—', (margem || 0) >= 40 ? 'var(--green)' : 'var(--amber)')}
         </div>`
-      : `<div class="diag-mini-grid">
-          ${diagMini('Receita',    fmtFull(rec),    'var(--green)')}
-          ${diagMini('Despesa',    fmtFull(desp),   'var(--red)')}
-          ${diagMini('Resultado',  fmtFull(res),    col(res,'var(--green)','var(--red)'))}
-          ${diagMini('Ating. Meta', atingMeta!==null ? atingMeta.toFixed(1)+'%' : '—', (atingMeta||0)>=100?'var(--green)':'var(--amber)')}
+      : `<div class="diag-mini-grid" style="grid-template-columns:repeat(5,1fr)">
+          ${diagMini('Receita',     fmtFull(rec),    'var(--green)')}
+          ${diagMini('Meta',        metrics.metaRec ? fmtFull(metrics.metaRec) : '—', 'var(--text2)')}
+          ${diagMini('Despesa',     fmtFull(desp),   'var(--red)')}
+          ${diagMini('Resultado',   fmtFull(res),    col(res))}
+          ${diagMini('Margem',      margem !== null ? margem.toFixed(1) + '%' : '—', (margem || 0) >= 40 ? 'var(--green)' : 'var(--amber)')}
         </div>`;
 
     const recBox = recs.length > 0
       ? `<div class="diag-rec-box">
-          <div class="diag-rec-title">Recomendações</div>
+          <div class="diag-rec-title">Recomendações Estratégicas</div>
           ${recs.map(r => `<div class="diag-rec-item">• ${r}</div>`).join('')}
         </div>`
       : '';
 
-    const dotCor = saude==='verde'?'var(--green)':saude==='amarelo'?'var(--amber)':'var(--red)';
+    const dotCor = saude === 'verde' ? 'var(--green)' : saude === 'amarelo' ? 'var(--amber)' : 'var(--red)';
     cards.push(`
       <div class="diag-card">
         <div class="diag-card-header">
@@ -1303,14 +1524,15 @@ function diagRenderConteudo() {
         <div class="diag-card-body">
           ${miniGrid}
           ${paras.map(p => `<p class="diag-para">${p}</p>`).join('')}
+          ${tableHtml || ''}
           ${recBox}
         </div>
       </div>`);
   }
 
   container.innerHTML = cards.length > 0
-    ? cards.join('')
-    : '<div class="diag-sem-dados">Sem dados suficientes para análise.</div>';
+    ? resumo + cards.join('')
+    : '<div class="diag-sem-dados">Sem dados suficientes para análise no período selecionado.</div>';
 }
 
 function renderDiagnostico() {
