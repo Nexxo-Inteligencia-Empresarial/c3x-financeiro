@@ -1048,17 +1048,22 @@ async function carregarAsaasMap(asaasToken) {
   let offset = 0;
   let totalRef = 0;
   const prevYear = ANO_FILTRO - 1;
-  // Busca por dueDate do Q4 do ano anterior: captura TODOS os boletos com vencimento
-  // Out-Dez, independente de quando foram pagos (em dia=2025 ou atrasados=2026).
-  // Anterior abordagem (paymentDate[ge]) só via 1 de 9 itens cross-year.
-  const dvList = []; // [{dueDate, value, paymentDate}] apenas cross-year (paymentDate em ANO_FILTRO)
+  const hoje = new Date();
+  const hojeFmt = String(ANO_FILTRO) + '-' +
+    String(hoje.getMonth() + 1).padStart(2, '0') + '-' +
+    String(hoje.getDate()).padStart(2, '0');
+  // Busca todos os pagamentos recebidos desde Jan/prevYear até hoje.
+  // Cobre cross-year (vencimento 2025, pago 2026) e atrasos intra-ano
+  // (vencimento Jan/2026, pago Fev/2026, etc.) — todos os meses corretos.
+  const dvList = []; // [{dueDate, value, paymentDate}]
 
   while (true) {
     const params = new URLSearchParams({
       token: asaasToken,
       endpoint: 'payments',
-      'dueDate[ge]': `${prevYear}-10-01`,
-      'dueDate[le]': `${prevYear}-12-31`,
+      status: 'RECEIVED',
+      'dueDate[ge]': `${prevYear}-01-01`,
+      'dueDate[le]': hojeFmt,
       limit: LIMIT,
       offset,
     });
@@ -1075,9 +1080,7 @@ async function carregarAsaasMap(asaasToken) {
         ASAAS_MAP[p.externalReference] = p.paymentDate;
         totalRef++;
       }
-      // Só cross-year: dueDate em prevYear, paymentDate em ANO_FILTRO
-      if (p.dueDate && p.paymentDate && p.value != null &&
-          p.paymentDate.startsWith(String(ANO_FILTRO))) {
+      if (p.dueDate && p.paymentDate && p.value != null) {
         dvList.push({
           dueDate:     String(p.dueDate).slice(0, 10),
           value:       parseFloat(p.value),
@@ -1091,7 +1094,7 @@ async function carregarAsaasMap(asaasToken) {
     if (offset > 9900) break;
   }
 
-  console.log('[Asaas] Q4/' + prevYear + ' cross-year: ' + dvList.length + ' pagamentos recebidos em ' + ANO_FILTRO);
+  console.log('[Asaas] Recebidos ' + prevYear + '-' + ANO_FILTRO + ': ' + dvList.length + ' entradas para match');
   return { totalRef, dvList };
 }
 
@@ -1151,11 +1154,10 @@ function calcularSaldoAbertura() {
     ' | atual: R$' + SALDO_ASAAS_ATUAL.toFixed(2) + ' | net Nibo: R$' + netNibo.toFixed(2));
 }
 
-// Match cross-year com tolerância de valor (±15%) para cobrir multas/juros
-// Só afeta itens Nibo com dueDate no ano anterior
+// Match paymentDate real por dueDate+valor (±15%) para cobrir multas/juros.
+// Sem restrição de ano: cobre cross-year (2025→2026) e atrasos intra-ano (Jan→Fev/2026).
 function enriquecerAsaasMapFallback(dvList) {
   let matched = 0;
-  const prevYearStr = String(ANO_FILTRO - 1);
   const available = dvList.slice(); // cópia mutável para consumo
 
   for (const item of RAW_CREDITS) {
@@ -1163,9 +1165,7 @@ function enriquecerAsaasMapFallback(dvList) {
     if (ASAAS_MAP[item.scheduleId]) continue;
     if (!item.dueDate || item.value == null) continue;
     const dNorm = String(item.dueDate).slice(0, 10);
-    if (!dNorm.startsWith(prevYearStr)) continue;
     const niboVal = parseFloat(item.value);
-    // Candidatos: mesma dueDate + valor dentro de ±15% (multas/juros)
     const idx = available.findIndex(p =>
       p.dueDate === dNorm && Math.abs(p.value - niboVal) / niboVal <= 0.15
     );
@@ -1175,11 +1175,7 @@ function enriquecerAsaasMapFallback(dvList) {
       matched++;
     }
   }
-  const crossYear = RAW_CREDITS.filter(i =>
-    i.isPaid && i.dueDate && String(i.dueDate).startsWith(prevYearStr) &&
-    i.scheduleId && ASAAS_MAP[i.scheduleId]
-  );
-  console.log('[Asaas] Cross-year matched: ' + matched + ' itens (dueDate ' + prevYearStr + ' → paymentDate ' + ANO_FILTRO + ')');
+  console.log('[Asaas] paymentDate real: ' + matched + ' itens corrigidos (dueDate+valor ±15%)');
 }
 
 async function carregarNibo() {
