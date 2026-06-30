@@ -16,7 +16,7 @@ module.exports = async function handler(req, res) {
   params.delete('token');
   params.delete('endpoint');
 
-  const asaasUrl = `https://api.asaas.com/v3/${decodedEndpoint}?${params.toString()}`;
+  const asaasUrl = `https://api.asaas.com/v3/${decodedEndpoint}?${params.toString().replace(/%5B/gi, '[').replace(/%5D/gi, ']')}`;
 
   try {
     const response = await fetch(asaasUrl, {

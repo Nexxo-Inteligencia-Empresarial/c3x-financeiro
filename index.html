@@ -1079,6 +1079,14 @@ async function carregarAsaasMap(asaasToken) {
     if (offset > 9900) break;
   }
 
+  // Diagnóstico: mostra no console os primeiros mapeamentos para verificar se scheduleId bate
+  const amostras = Object.entries(ASAAS_MAP).slice(0, 5);
+  if (amostras.length > 0) {
+    console.log('[Asaas] Amostra do mapa (externalReference → paymentDate):', amostras);
+  } else {
+    console.warn('[Asaas] ATENÇÃO: Nenhum pagamento tem externalReference preenchido — mapeamento não funcionará.');
+  }
+
   return total;
 }
 
@@ -1110,6 +1118,11 @@ async function carregarNibo() {
     try {
       const n = await carregarAsaasMap(_asaasToken);
       console.log('[Asaas] ASAAS_MAP carregado:', n, 'pagamentos com externalReference');
+      // Verifica os 9 itens problemáticos de Jan/2026 pelo nome do cliente nos RAW_CREDITS
+      if (n > 0) {
+        const jan26 = RAW_CREDITS.filter(i => i.isPaid && i.dueDate && i.dueDate.startsWith('2025-1') && i.scheduleId && ASAAS_MAP[i.scheduleId]);
+        console.log('[Asaas] Itens dueDate Dez/2025 com paymentDate real do Asaas:', jan26.length, jan26.map(i => ({ cliente: i.stakeholder?.name, dueDate: i.dueDate, paymentDate: ASAAS_MAP[i.scheduleId], scheduleId: i.scheduleId })));
+      }
     } catch(e) {
       console.warn('[Asaas] Falha ao carregar:', e.message);
     }
