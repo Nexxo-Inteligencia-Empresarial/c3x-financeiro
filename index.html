@@ -1095,6 +1095,62 @@ async function carregarAsaasMap(asaasToken) {
   return { totalRef, dvList };
 }
 
+// Busca saldo atual e saldo de abertura do ano diretamente na API Asaas
+// SALDO_ASAAS_ATUAL = /finance/balance (saldo em tempo real)
+// SALDO_INICIAL_2026 = saldo_atual − net(financialTransactions do ANO_FILTRO)
+async function carregarAsaasSaldos(asaasToken) {
+  // 1. Saldo atual
+  try {
+    const params = new URLSearchParams({ token: asaasToken, endpoint: 'finance/balance' });
+    const resp = await fetch(`/api/asaas?${params}`);
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data.balance != null) {
+        SALDO_ASAAS_ATUAL = parseFloat(data.balance);
+        console.log('[Asaas] Saldo atual: R$' + SALDO_ASAAS_ATUAL.toFixed(2));
+      }
+    }
+  } catch(e) { console.warn('[Asaas] Saldo atual: erro -', e.message); }
+
+  if (SALDO_ASAAS_ATUAL == null) return;
+
+  // 2. Net de transações do ANO_FILTRO → saldo de abertura = saldo_atual − net_ano
+  const LIMIT = 100;
+  let offset = 0;
+  const hoje = new Date().toISOString().slice(0, 10);
+  let netAno = 0;
+  try {
+    while (true) {
+      const params = new URLSearchParams({
+        token: asaasToken,
+        endpoint: 'financialTransactions',
+        startDate: `${ANO_FILTRO}-01-01`,
+        finishDate: hoje,
+        limit: LIMIT,
+        offset,
+      });
+      const resp = await fetch(`/api/asaas?${params}`);
+      if (!resp.ok) break;
+      const data = await resp.json();
+      for (const t of (data.data || [])) {
+        const v = parseFloat(t.value) || 0;
+        netAno += (t.type === 'CREDIT' ? v : -v);
+      }
+      if (!data.hasMore) break;
+      offset += LIMIT;
+      if (offset > 9900) break;
+    }
+    SALDO_INICIAL_2026 = SALDO_ASAAS_ATUAL - netAno;
+    localStorage.setItem('c3x_saldo_abertura_asaas', SALDO_INICIAL_2026.toFixed(2));
+    console.log('[Asaas] Saldo abertura ' + ANO_FILTRO + ': R$' + SALDO_INICIAL_2026.toFixed(2) +
+      ' | atual: R$' + SALDO_ASAAS_ATUAL.toFixed(2) + ' | net ' + ANO_FILTRO + ': R$' + netAno.toFixed(2));
+  } catch(e) {
+    console.warn('[Asaas] Saldo abertura: erro -', e.message);
+    const stored = parseFloat(localStorage.getItem('c3x_saldo_abertura_asaas') || '');
+    SALDO_INICIAL_2026 = isNaN(stored) ? 14426.68 : stored;
+  }
+}
+
 // Match cross-year com tolerância de valor (±15%) para cobrir multas/juros
 // Só afeta itens Nibo com dueDate no ano anterior
 function enriquecerAsaasMapFallback(dvList) {
@@ -1158,8 +1214,10 @@ async function carregarNibo() {
     } catch(e) {
       console.warn('[Asaas] Falha ao carregar:', e.message);
     }
+    loaderEl.textContent = 'Buscando saldo Asaas...';
+    await carregarAsaasSaldos(_asaasToken);
   } else {
-    console.log('[Asaas] Token não configurado — receita usará dueDate como fallback (diferença conhecida de R$786,33 em Jan/2026).');
+    console.log('[Asaas] Token não configurado — receita usará dueDate como fallback.');
   }
 
   loaderEl.textContent = 'Processando...';
@@ -1234,49 +1292,12 @@ async function carregarNibo() {
   }
 
 
-  // ── Saldo e movimentos da conta Recebimentos Asaas ──────────────────────────
-  const _CONTA_ASAAS_ID = '70747a41-4ab5-4b65-96c9-0a76545f7c11';
-
-  loaderEl.textContent = 'Buscando saldo Recebimentos Asaas...';
-  SALDO_ASAAS_ATUAL = null;
-  try {
-    const accData = await niboGet('accounts');
-    const accs = accData.items || accData || [];
-    const asaas = Array.isArray(accs) ? accs.find(a => (a.accountId||a.id) === _CONTA_ASAAS_ID) : null;
-    if (asaas) {
-      SALDO_ASAAS_ATUAL = asaas.balance ?? asaas.currentBalance ?? asaas.currentValue ?? asaas.amount ?? null;
-      console.log('[Fluxo] Conta Recebimentos Asaas:', JSON.stringify(asaas));
-    } else {
-      console.warn('[Fluxo] Conta Recebimentos Asaas não encontrada em accounts. IDs:', Array.isArray(accs)?accs.map(a=>a.accountId||a.id):accs);
-    }
-  } catch(e) { console.warn('[Fluxo] accounts error:', e.message); }
-
-  // Tentar buscar entries bancários da conta Asaas
-  loaderEl.textContent = 'Buscando movimentos bancários...';
-  RAW_ENTRIES = [];
-  for (const ep of [
-    {'$filter':`year(date) eq ${ANO_FILTRO} and accountId eq '${_CONTA_ASAAS_ID}'`,'$orderby':'date'},
-    {'$filter':`year(date) eq ${ANO_FILTRO}`,'$orderby':'date'},
-  ]) {
-    try {
-      const eData = await niboGetAll('entries', ep);
-      const eAll  = eData.items || [];
-      if (eAll.length > 0) {
-        RAW_ENTRIES = eAll.filter(e => !e.accountId || e.accountId === _CONTA_ASAAS_ID);
-        console.log('[Fluxo entries] OK! Total:', eAll.length, '| Asaas:', RAW_ENTRIES.length, '| sample:', JSON.stringify(eAll[0]));
-        break;
-      }
-      console.log('[Fluxo entries] 0 itens:', JSON.stringify(ep)); break;
-    } catch(e) { console.warn('[Fluxo entries] falhou:', JSON.stringify(ep), e.message); }
-  }
-
-  // Saldo de abertura 01/Jan/2026 — via localStorage (configurável pelo usuário)
-  // Não é possível calcular via fórmula: schedules não têm accountId, então
-  // o net2026 de todas as contas não corresponde ao net só da Recebimentos Asaas.
-  {
+  // ── Saldo de abertura: calculado via Asaas em carregarAsaasSaldos() ──────────
+  // Se token não configurado, usa localStorage ou default
+  if (!localStorage.getItem('c3x_asaas_token')) {
     const stored = parseFloat(localStorage.getItem('c3x_saldo_abertura_asaas') || '');
     SALDO_INICIAL_2026 = isNaN(stored) ? 14426.68 : stored;
-    console.log('[Fluxo] Saldo abertura Jan/2026:', SALDO_INICIAL_2026, '| Fonte:', isNaN(stored)?'default':'localStorage');
+    console.log('[Fluxo] Saldo abertura (fallback):', SALDO_INICIAL_2026);
   }
 
   // Resultado
