@@ -1075,8 +1075,11 @@ async function carregarAsaasMap(asaasToken) {
         totalRef++;
       }
       // Fallback: indexa por dueDate + valor para match cruzado
+      // Normaliza: dueDate → primeiros 10 chars (YYYY-MM-DD), valor → float arredondado 2 casas
       if (p.dueDate && p.paymentDate && p.value != null) {
-        const key = `${p.dueDate}_${p.value}`;
+        const dNorm = String(p.dueDate).slice(0, 10);
+        const vNorm = parseFloat(p.value).toFixed(2);
+        const key = `${dNorm}_${vNorm}`;
         if (!dvMap[key]) dvMap[key] = [];
         dvMap[key].push(p.paymentDate);
       }
@@ -1087,24 +1090,32 @@ async function carregarAsaasMap(asaasToken) {
     if (offset > 9900) break;
   }
 
-  console.log('[Asaas] Via externalReference:', totalRef, '| Via dueDate+valor disponíveis:', Object.keys(dvMap).length, 'chaves');
+  // Log amostra para diagnóstico de formato
+  const amostraAsaas = Object.keys(dvMap).slice(0, 3);
+  console.log('[Asaas] Via externalReference:', totalRef, '| dvMap chaves:', Object.keys(dvMap).length, '| amostra:', amostraAsaas);
   return { totalRef, dvMap };
 }
 
 // Plano B: enriquece ASAAS_MAP para itens Nibo sem match direto, usando dueDate+valor
 function enriquecerAsaasMapFallback(dvMap) {
   let matched = 0;
+  // Amostra Nibo para diagnóstico de formato
+  const amostraNibo = RAW_CREDITS.filter(i => i.isPaid && !i.isEntry).slice(0, 3).map(i => `${String(i.dueDate).slice(0,10)}_${parseFloat(i.value).toFixed(2)}`);
+  console.log('[Asaas] Amostra chaves Nibo:', amostraNibo);
+
   for (const item of RAW_CREDITS) {
     if (!item.isPaid || item.isEntry || !item.scheduleId) continue;
     if (ASAAS_MAP[item.scheduleId]) continue; // já tem match por externalReference
     if (!item.dueDate || item.value == null) continue;
-    const key = `${item.dueDate}_${item.value}`;
+    const dNorm = String(item.dueDate).slice(0, 10);
+    const vNorm = parseFloat(item.value).toFixed(2);
+    const key = `${dNorm}_${vNorm}`;
     if (dvMap[key] && dvMap[key].length > 0) {
       ASAAS_MAP[item.scheduleId] = dvMap[key].shift(); // consome uma data da fila
       matched++;
     }
   }
-  const jan26 = RAW_CREDITS.filter(i => i.isPaid && i.dueDate && i.dueDate >= '2025-10-01' && i.dueDate <= '2025-12-31' && i.scheduleId && ASAAS_MAP[i.scheduleId]);
+  const jan26 = RAW_CREDITS.filter(i => i.isPaid && i.dueDate && String(i.dueDate).slice(0,10) >= '2025-10-01' && String(i.dueDate).slice(0,10) <= '2025-12-31' && i.scheduleId && ASAAS_MAP[i.scheduleId]);
   console.log('[Asaas] Fallback dueDate+valor: matched', matched, 'itens');
   console.log('[Asaas] Itens Out-Dez/2025 com paymentDate real:', jan26.length, jan26.map(i => ({ cliente: i.stakeholder?.name, dueDate: i.dueDate, paymentDate: ASAAS_MAP[i.scheduleId] })));
 }
