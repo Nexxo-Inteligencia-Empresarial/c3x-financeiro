@@ -345,6 +345,10 @@ tr:hover td { background: #f9fafb; }
       <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z"/></svg>
       Orçamento
     </a>
+    <a href="#" onclick="goPage('integracao',this)" id="sidebar-integracao">
+      <svg viewBox="0 0 24 24"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
+      Integrações
+    </a>
   </div>
   <div class="sidebar-bottom">
     <div class="sidebar-user">
@@ -404,10 +408,6 @@ tr:hover td { background: #f9fafb; }
       <span id="countdown-badge" style="display:none;font-size:11px;color:var(--text2);background:#f3f4f6;padding:3px 9px;border-radius:20px;font-family:monospace">
         🔄 <span id="countdown-text">30:00</span>
       </span>
-      <button class="refresh-btn" onclick="abrirModalAsaas()" title="Configurar token Asaas" id="btn-asaas-config" style="gap:5px">
-        <svg viewBox="0 0 24 24" width="14" height="14"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
-        Asaas
-      </button>
       <button class="refresh-btn" onclick="recarregarManual()">
         <svg viewBox="0 0 24 24"><path d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
         Atualizar
@@ -781,6 +781,69 @@ tr:hover td { background: #f9fafb; }
           <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Valor</th></tr></thead>
           <tbody id="servico-cc-lancamentos"></tbody>
         </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAGE: INTEGRAÇÕES -->
+  <div class="page" id="page-integracao">
+    <div class="page-header">
+      <div class="page-badge">Sistema</div>
+      <h1 class="page-title">Integrações</h1>
+      <p class="page-sub">Gerencie as chaves de API das integrações do dashboard. Os tokens ficam salvos apenas no seu navegador.</p>
+    </div>
+
+    <!-- Nibo -->
+    <div class="table-card" style="margin-bottom:1.5rem;max-width:640px">
+      <div class="table-header">
+        <div>
+          <div class="table-title" style="display:flex;align-items:center;gap:10px">
+            <svg viewBox="0 0 24 24" width="18" height="18" style="fill:var(--blue);flex-shrink:0"><path d="M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm14 3a4 4 0 100-8 4 4 0 000 8z"/></svg>
+            Nibo
+          </div>
+          <div class="table-sub">Token de acesso à API pública do Nibo (schedules, contas, categorias)</div>
+        </div>
+        <div id="integ-nibo-badge" style="font-size:12px;font-weight:600;padding:4px 10px;border-radius:20px;background:#dcfce7;color:#16a34a">● Conectado</div>
+      </div>
+      <div style="padding:1.25rem">
+        <label style="font-size:12px;font-weight:600;color:var(--text2);display:block;margin-bottom:6px">API Token</label>
+        <div style="display:flex;gap:8px">
+          <input id="integ-nibo-input" type="password" placeholder="Cole o novo token aqui" autocomplete="off"
+            style="flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:monospace">
+          <button onclick="integSalvarNibo()"
+            style="padding:9px 20px;background:var(--blue);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">
+            Salvar e reconectar
+          </button>
+        </div>
+        <p style="font-size:12px;color:var(--text2);margin:8px 0 0">Encontre em: <strong>Nibo → Empresa → Configurações → API</strong></p>
+        <p id="integ-nibo-status" style="font-size:12px;min-height:16px;margin:6px 0 0"></p>
+      </div>
+    </div>
+
+    <!-- Asaas -->
+    <div class="table-card" style="max-width:640px">
+      <div class="table-header">
+        <div>
+          <div class="table-title" style="display:flex;align-items:center;gap:10px">
+            <svg viewBox="0 0 24 24" width="18" height="18" style="fill:var(--green);flex-shrink:0"><path d="M20 4H4c-1.11 0-2 .89-2 2v12c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z"/></svg>
+            Asaas
+          </div>
+          <div class="table-sub">Token para buscar datas reais de recebimento e corrigir regime de caixa (+R$786)</div>
+        </div>
+        <div id="integ-asaas-badge" style="font-size:12px;font-weight:600;padding:4px 10px;border-radius:20px;background:#f3f4f6;color:#6b7280">● Não configurado</div>
+      </div>
+      <div style="padding:1.25rem">
+        <label style="font-size:12px;font-weight:600;color:var(--text2);display:block;margin-bottom:6px">Access Token</label>
+        <div style="display:flex;gap:8px">
+          <input id="integ-asaas-input" type="password" placeholder="$aact_..." autocomplete="off"
+            style="flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:monospace">
+          <button onclick="integSalvarAsaas()"
+            style="padding:9px 20px;background:var(--green);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">
+            Salvar e testar
+          </button>
+        </div>
+        <p style="font-size:12px;color:var(--text2);margin:8px 0 0">Peça ao admin da conta Asaas: <strong>Configurações → Integrações → API → Gerar nova chave</strong></p>
+        <p id="integ-asaas-status" style="font-size:12px;min-height:16px;margin:6px 0 0"></p>
       </div>
     </div>
   </div>
@@ -3137,6 +3200,7 @@ function goPage(id, el) {
   document.querySelectorAll('.sidebar-nav a').forEach(a=>a.classList.remove('active'));
   document.getElementById('page-'+id).classList.add('active');
   if (el) el.classList.add('active');
+  if (id === 'integracao') integAtualizarBadges();
   return false;
 }
 
@@ -3167,6 +3231,80 @@ function setAno(val) {
     document.querySelector('.chip[onclick*="\'ano\'"]')?.classList.add('active');
   }
   recarregarManual();
+}
+
+/* ═══════════════════════════════════════════
+   INTEGRAÇÕES
+═══════════════════════════════════════════ */
+function integAtualizarBadges() {
+  const temNibo   = !!localStorage.getItem('nibo_token_c3x');
+  const temAsaas  = !!localStorage.getItem('c3x_asaas_token');
+
+  const niboBadge  = document.getElementById('integ-nibo-badge');
+  const asaasBadge = document.getElementById('integ-asaas-badge');
+
+  if (niboBadge) {
+    niboBadge.textContent  = temNibo  ? '● Conectado' : '● Não configurado';
+    niboBadge.style.background = temNibo  ? '#dcfce7' : '#f3f4f6';
+    niboBadge.style.color      = temNibo  ? '#16a34a' : '#6b7280';
+  }
+  if (asaasBadge) {
+    asaasBadge.textContent  = temAsaas ? '● Conectado' : '● Não configurado';
+    asaasBadge.style.background = temAsaas ? '#dcfce7' : '#f3f4f6';
+    asaasBadge.style.color      = temAsaas ? '#16a34a' : '#6b7280';
+  }
+}
+
+async function integSalvarNibo() {
+  const t = document.getElementById('integ-nibo-input').value.trim();
+  const statusEl = document.getElementById('integ-nibo-status');
+  if (!t) { statusEl.style.color='var(--red)'; statusEl.textContent='Cole o token antes de salvar.'; return; }
+  statusEl.style.color='var(--text2)'; statusEl.textContent='Verificando...';
+  TOKEN = t;
+  localStorage.setItem('nibo_token_c3x', t);
+  document.getElementById('token-input').value = t;
+  try {
+    await recarregar();
+    statusEl.style.color='var(--green)'; statusEl.textContent='Token salvo e dados recarregados.';
+    document.getElementById('integ-nibo-input').value = '';
+    integAtualizarBadges();
+  } catch(e) {
+    TOKEN = ''; localStorage.removeItem('nibo_token_c3x');
+    statusEl.style.color='var(--red)'; statusEl.textContent='Token inválido: ' + (e.message||'erro desconhecido');
+    integAtualizarBadges();
+  }
+}
+
+async function integSalvarAsaas() {
+  const t = document.getElementById('integ-asaas-input').value.trim();
+  const statusEl = document.getElementById('integ-asaas-status');
+
+  if (!t) {
+    localStorage.removeItem('c3x_asaas_token');
+    statusEl.style.color='var(--text2)'; statusEl.textContent='Token removido.';
+    integAtualizarBadges();
+    return;
+  }
+
+  statusEl.style.color='var(--text2)'; statusEl.textContent='Verificando...';
+  try {
+    const params = new URLSearchParams({ token: t, endpoint: 'payments', status: 'RECEIVED', limit: 1, offset: 0 });
+    const resp = await fetch(`/api/asaas?${params}`);
+    const data = await resp.json();
+    if (!resp.ok || data.error) {
+      statusEl.style.color='var(--red)';
+      statusEl.textContent='Token inválido: ' + (data.error || 'HTTP ' + resp.status);
+      return;
+    }
+    localStorage.setItem('c3x_asaas_token', t);
+    statusEl.style.color='var(--green)';
+    statusEl.textContent='Token válido.' + (data.totalCount != null ? ' ' + data.totalCount + ' pagamentos recebidos disponíveis.' : '');
+    document.getElementById('integ-asaas-input').value = '';
+    integAtualizarBadges();
+    recarregarManual();
+  } catch(e) {
+    statusEl.style.color='var(--red)'; statusEl.textContent='Erro de conexão: ' + e.message;
+  }
 }
 
 /* ═══════════════════════════════════════════
@@ -3832,90 +3970,10 @@ function exportarJaneiro() {
 window.addEventListener('DOMContentLoaded', ()=>{
   const saved = localStorage.getItem('nibo_token_c3x');
   if (saved) { TOKEN=saved; document.getElementById('token-input').value=saved; iniciar(); }
-  atualizarBadgeAsaas();
   document.getElementById('topbar-ano').value = String(ANO_FILTRO);
+  integAtualizarBadges();
 });
-
-function abrirModalAsaas() {
-  const atual = localStorage.getItem('c3x_asaas_token') || '';
-  document.getElementById('asaas-token-input').value = atual;
-  document.getElementById('asaas-modal').style.display = 'flex';
-  document.getElementById('asaas-status').textContent = '';
-}
-
-function fecharModalAsaas() {
-  document.getElementById('asaas-modal').style.display = 'none';
-}
-
-async function salvarTokenAsaas() {
-  const t = document.getElementById('asaas-token-input').value.trim();
-  const statusEl = document.getElementById('asaas-status');
-
-  if (!t) {
-    localStorage.removeItem('c3x_asaas_token');
-    statusEl.style.color = 'var(--text2)';
-    statusEl.textContent = 'Token removido.';
-    atualizarBadgeAsaas();
-    return;
-  }
-
-  statusEl.style.color = 'var(--text2)';
-  statusEl.textContent = 'Verificando...';
-
-  try {
-    const params = new URLSearchParams({ token: t, endpoint: 'payments', status: 'RECEIVED', limit: 1, offset: 0 });
-    const resp = await fetch(`/api/asaas?${params}`);
-    const data = await resp.json();
-
-    if (!resp.ok || data.error) {
-      statusEl.style.color = 'var(--red)';
-      statusEl.textContent = `Erro: ${data.error || 'Token inválido (HTTP ' + resp.status + ')'}`;
-      return;
-    }
-
-    localStorage.setItem('c3x_asaas_token', t);
-    statusEl.style.color = 'var(--green)';
-    statusEl.textContent = `Token válido. ${data.totalCount ?? ''} pagamentos recebidos disponíveis.`;
-    atualizarBadgeAsaas();
-
-    setTimeout(() => {
-      fecharModalAsaas();
-      recarregarManual();
-    }, 1500);
-  } catch(e) {
-    statusEl.style.color = 'var(--red)';
-    statusEl.textContent = 'Erro de conexão: ' + e.message;
-  }
-}
-
-function atualizarBadgeAsaas() {
-  const btn = document.getElementById('btn-asaas-config');
-  if (!btn) return;
-  const temToken = !!localStorage.getItem('c3x_asaas_token');
-  btn.style.borderColor = temToken ? 'var(--green)' : '';
-  btn.style.color = temToken ? 'var(--green)' : '';
-  btn.title = temToken ? 'Asaas conectado — clique para reconfigurar' : 'Configurar token Asaas para corrigir datas de pagamento';
-}
 </script>
-
-<!-- Modal Asaas -->
-<div id="asaas-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center">
-  <div style="background:white;border-radius:12px;padding:32px;width:min(480px,90vw);box-shadow:0 20px 60px rgba(0,0,0,.2)">
-    <h3 style="margin:0 0 6px;font-size:18px;font-weight:700">Integração Asaas</h3>
-    <p style="margin:0 0 20px;font-size:13px;color:var(--text2)">
-      O token Asaas permite buscar as datas reais de recebimento e corrigir divergências de regime de caixa.
-      Peça ao administrador da conta Asaas para gerar uma chave em <strong>Configurações → Integrações → Gerar nova chave</strong>.
-    </p>
-    <label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">Token Asaas (access_token)</label>
-    <input id="asaas-token-input" type="password" placeholder="$aact_..." autocomplete="off"
-      style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:monospace;margin-bottom:12px">
-    <p id="asaas-status" style="font-size:12px;min-height:18px;margin:0 0 16px"></p>
-    <div style="display:flex;gap:10px;justify-content:flex-end">
-      <button class="refresh-btn" onclick="fecharModalAsaas()" style="padding:8px 18px">Cancelar</button>
-      <button onclick="salvarTokenAsaas()" style="padding:8px 22px;background:var(--blue);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Salvar e testar</button>
-    </div>
-  </div>
-</div>
 
 </body>
 </html>
