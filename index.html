@@ -1093,7 +1093,7 @@ async function carregarAsaasMap(asaasToken) {
   // Log amostra para diagnóstico de formato
   const amostraAsaas = Object.keys(dvMap).slice(0, 3);
   const keys2025 = Object.keys(dvMap).filter(k => k.startsWith('2025'));
-  console.log('[Asaas] Via externalReference:', totalRef, '| dvMap chaves:', Object.keys(dvMap).length, '| chaves 2025:', keys2025.length, '| amostra 2025:', keys2025.slice(0, 8));
+  console.log('[Asaas] dvMap 2025 amostra: ' + JSON.stringify(keys2025.slice(0, 8)));
   return { totalRef, dvMap };
 }
 
@@ -1129,7 +1129,7 @@ function enriquecerAsaasMapFallback(dvMap) {
   const niboKeys2025 = RAW_CREDITS.filter(i => i.isPaid && !i.isEntry && String(i.dueDate).startsWith('2025'))
     .slice(0, 8).map(i => `${String(i.dueDate).slice(0,10)}_${parseFloat(i.value).toFixed(2)}`);
   console.log('[Asaas] Cross-year matched:', matched);
-  console.log('[Asaas] Nibo keys 2025 (amostra):', niboKeys2025);
+  console.log('[Asaas] Nibo keys 2025 amostra: ' + JSON.stringify(niboKeys2025));
   console.log('[Asaas] Detalhe:', crossYear.map(i => ({ cliente: i.stakeholder?.name, dueDate: i.dueDate, paymentDate: ASAAS_MAP[i.scheduleId] })));
 }
 
