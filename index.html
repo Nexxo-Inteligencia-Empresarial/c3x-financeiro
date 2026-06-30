@@ -1173,12 +1173,21 @@ function enriquecerAsaasMapFallback(dvList) {
       p.dueDate === dNorm && Math.abs(p.value - niboVal) / niboVal <= 0.15
     );
     if (idx >= 0) {
-      ASAAS_MAP[item.scheduleId] = available[idx].paymentDate;
+      const pd = available[idx].paymentDate;
+      console.log('[Asaas][match] due:' + dNorm + ' → pay:' + pd +
+        ' | niboR$:' + niboVal.toFixed(2) + ' asaasR$:' + available[idx].value.toFixed(2) +
+        ' | desc:' + (item.description || '').slice(0, 40));
+      ASAAS_MAP[item.scheduleId] = pd;
       available.splice(idx, 1);
       matched++;
     }
   }
   console.log('[Asaas] paymentDate real: ' + matched + ' itens corrigidos (dueDate+valor ±15%)');
+  if (dvList.length > matched) {
+    const naoMatch = dvList.filter(p => !Object.values(ASAAS_MAP).includes(p.paymentDate));
+    console.log('[Asaas] dvList sem match (' + (dvList.length - matched) + '): ' +
+      dvList.slice(0, 10).map(p => p.dueDate + '→' + p.paymentDate + ' R$' + p.value.toFixed(2)).join(' | '));
+  }
 }
 
 async function carregarNibo() {
