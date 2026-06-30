@@ -1080,7 +1080,10 @@ async function carregarAsaasMap(asaasToken) {
         ASAAS_MAP[p.externalReference] = p.paymentDate;
         totalRef++;
       }
-      if (p.dueDate && p.paymentDate && p.value != null) {
+      // Só entra no pool se o mês do pagamento ≠ mês do vencimento.
+      // Pagamentos em dia (mesmo mês) não precisam de correção e poluem o match.
+      if (p.dueDate && p.paymentDate && p.value != null &&
+          String(p.dueDate).slice(0, 7) !== String(p.paymentDate).slice(0, 7)) {
         dvList.push({
           dueDate:     String(p.dueDate).slice(0, 10),
           value:       parseFloat(p.value),
