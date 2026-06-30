@@ -895,7 +895,8 @@ let RAW_DEBITS  = [];
 let RAW_ENTRIES = [];         // movimentos bancários reais (entries) — se disponível via API
 let SALDO_ASAAS_ATUAL = null; // saldo atual da conta Recebimentos Asaas (via accounts API)
 let SALDO_INICIAL_2026 = 0;   // saldo de abertura em 01/Jan/2026 (calculado)
-let ASAAS_MAP = {};           // scheduleId → paymentDate real (via Asaas API)
+let ASAAS_MAP = {};             // scheduleId → paymentDate real (via externalReference, se disponível)
+let ASAAS_MONTHLY_RECEITA = null; // Array(12) com receita real por mês (paymentDate), fonte Asaas
 
 // Regime de caixa: data de recebimento.
 // Prioridade: ASAAS_MAP[scheduleId] > paymentDate > dueDate > scheduleDate
@@ -1043,27 +1044,26 @@ async function carregarCategoriasNibo() {
   }
 }
 
-async function carregarAsaasMap(asaasToken) {
+// Busca todos os pagamentos recebidos no ANO_FILTRO por paymentDate.
+// Soma por mês → ASAAS_MONTHLY_RECEITA[0..11] (fonte autoritativa de receita).
+// Não depende de matching: qualquer pagamento recebido em Jan vai para Janeiro, etc.
+async function carregarAsaasMonthlyReceita(asaasToken) {
   const LIMIT = 100;
   let offset = 0;
-  let totalRef = 0;
-  const prevYear = ANO_FILTRO - 1;
   const hoje = new Date();
   const hojeFmt = String(ANO_FILTRO) + '-' +
     String(hoje.getMonth() + 1).padStart(2, '0') + '-' +
     String(hoje.getDate()).padStart(2, '0');
-  // Busca todos os pagamentos recebidos desde Jan/prevYear até hoje.
-  // Cobre cross-year (vencimento 2025, pago 2026) e atrasos intra-ano
-  // (vencimento Jan/2026, pago Fev/2026, etc.) — todos os meses corretos.
-  const dvList = []; // [{dueDate, value, paymentDate}]
+
+  ASAAS_MONTHLY_RECEITA = new Array(12).fill(0);
 
   while (true) {
     const params = new URLSearchParams({
       token: asaasToken,
       endpoint: 'payments',
       status: 'RECEIVED',
-      'dueDate[ge]': `${prevYear}-01-01`,
-      'dueDate[le]': hojeFmt,
+      'paymentDate[ge]': `${ANO_FILTRO}-01-01`,
+      'paymentDate[le]': hojeFmt,
       limit: LIMIT,
       offset,
     });
@@ -1076,20 +1076,9 @@ async function carregarAsaasMap(asaasToken) {
     const data = await resp.json();
 
     for (const p of (data.data || [])) {
-      if (p.externalReference && p.paymentDate) {
-        ASAAS_MAP[p.externalReference] = p.paymentDate;
-        totalRef++;
-      }
-      // Só entra no pool se o mês do pagamento ≠ mês do vencimento.
-      // Pagamentos em dia (mesmo mês) não precisam de correção e poluem o match.
-      if (p.dueDate && p.paymentDate && p.value != null &&
-          String(p.dueDate).slice(0, 7) !== String(p.paymentDate).slice(0, 7)) {
-        dvList.push({
-          dueDate:     String(p.dueDate).slice(0, 10),
-          value:       parseFloat(p.value),
-          paymentDate: p.paymentDate,
-        });
-      }
+      if (!p.paymentDate || p.value == null) continue;
+      const m = parseInt(p.paymentDate.slice(5, 7)) - 1;
+      if (m >= 0 && m < 12) ASAAS_MONTHLY_RECEITA[m] += parseFloat(p.value);
     }
 
     if (!data.hasMore) break;
@@ -1097,8 +1086,8 @@ async function carregarAsaasMap(asaasToken) {
     if (offset > 9900) break;
   }
 
-  console.log('[Asaas] Recebidos ' + prevYear + '-' + ANO_FILTRO + ': ' + dvList.length + ' entradas para match');
-  return { totalRef, dvList };
+  console.log('[Asaas] Receita mensal ' + ANO_FILTRO + ' (paymentDate):',
+    ASAAS_MONTHLY_RECEITA.map((v, i) => (i + 1) + ':R$' + v.toFixed(0)).join(' '));
 }
 
 // Busca saldo atual e saldo de abertura do ano diretamente na API Asaas
@@ -1136,59 +1125,38 @@ function calcularSaldoAbertura() {
   const hoje = new Date();
   const toDay = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
   const jan1  = new Date(ANO_FILTRO, 0, 1);
-  let netNibo = 0;
-  for (const item of RAW_CREDITS) {
-    const ok = item.isPaid === true || item.isEntry === true;
-    if (!ok) continue;
-    const ds = _dataCaixa(item); if (!ds) continue;
-    const dt = toDay(new Date(ds));
-    if (dt >= jan1 && dt <= toDay(hoje)) netNibo += Math.abs(item.value || 0);
+
+  // Receita: usar totais reais do Asaas se disponível (mesma fonte do REAL.receita)
+  let totalRec = 0;
+  if (ASAAS_MONTHLY_RECEITA) {
+    totalRec = ASAAS_MONTHLY_RECEITA.reduce((s, v) => s + (v || 0), 0);
+  } else {
+    for (const item of RAW_CREDITS) {
+      const ok = item.isPaid === true || item.isEntry === true;
+      if (!ok) continue;
+      const ds = _dataCaixa(item); if (!ds) continue;
+      const dt = toDay(new Date(ds));
+      if (dt >= jan1 && dt <= toDay(hoje)) totalRec += Math.abs(item.value || 0);
+    }
   }
+
+  // Despesa: continua do Nibo (não passa pelo Asaas)
+  let totalDesp = 0;
   for (const item of RAW_DEBITS) {
     const ok = item.isPaid === true || (item.isPaid == null && Math.abs(item.openValue||0) === 0 && Math.abs(item.value||0) > 0);
     if (!ok) continue;
     const ds = item.paymentDate || item.dueDate || item.scheduleDate; if (!ds) continue;
     const dt = toDay(new Date(ds));
-    if (dt >= jan1 && dt <= toDay(hoje)) netNibo -= Math.abs(item.value || 0);
+    if (dt >= jan1 && dt <= toDay(hoje)) totalDesp += Math.abs(item.value || 0);
   }
-  SALDO_INICIAL_2026 = SALDO_ASAAS_ATUAL - netNibo;
+
+  SALDO_INICIAL_2026 = SALDO_ASAAS_ATUAL - totalRec + totalDesp;
   localStorage.setItem('c3x_saldo_abertura_asaas', SALDO_INICIAL_2026.toFixed(2));
   console.log('[Fluxo] Saldo abertura ' + ANO_FILTRO + ': R$' + SALDO_INICIAL_2026.toFixed(2) +
-    ' | atual: R$' + SALDO_ASAAS_ATUAL.toFixed(2) + ' | net Nibo: R$' + netNibo.toFixed(2));
+    ' | atual: R$' + SALDO_ASAAS_ATUAL.toFixed(2) +
+    ' | rec: R$' + totalRec.toFixed(2) + ' | desp: R$' + totalDesp.toFixed(2));
 }
 
-// Match paymentDate real por dueDate+valor (±15%) para cobrir multas/juros.
-// Sem restrição de ano: cobre cross-year (2025→2026) e atrasos intra-ano (Jan→Fev/2026).
-function enriquecerAsaasMapFallback(dvList) {
-  let matched = 0;
-  const available = dvList.slice(); // cópia mutável para consumo
-
-  for (const item of RAW_CREDITS) {
-    if (!item.isPaid || item.isEntry || !item.scheduleId) continue;
-    if (ASAAS_MAP[item.scheduleId]) continue;
-    if (!item.dueDate || item.value == null) continue;
-    const dNorm = String(item.dueDate).slice(0, 10);
-    const niboVal = parseFloat(item.value);
-    const idx = available.findIndex(p =>
-      p.dueDate === dNorm && Math.abs(p.value - niboVal) / niboVal <= 0.15
-    );
-    if (idx >= 0) {
-      const pd = available[idx].paymentDate;
-      console.log('[Asaas][match] due:' + dNorm + ' → pay:' + pd +
-        ' | niboR$:' + niboVal.toFixed(2) + ' asaasR$:' + available[idx].value.toFixed(2) +
-        ' | desc:' + (item.description || '').slice(0, 40));
-      ASAAS_MAP[item.scheduleId] = pd;
-      available.splice(idx, 1);
-      matched++;
-    }
-  }
-  console.log('[Asaas] paymentDate real: ' + matched + ' itens corrigidos (dueDate+valor ±15%)');
-  if (dvList.length > matched) {
-    const naoMatch = dvList.filter(p => !Object.values(ASAAS_MAP).includes(p.paymentDate));
-    console.log('[Asaas] dvList sem match (' + (dvList.length - matched) + '): ' +
-      dvList.slice(0, 10).map(p => p.dueDate + '→' + p.paymentDate + ' R$' + p.value.toFixed(2)).join(' | '));
-  }
-}
 
 async function carregarNibo() {
   const loaderEl = document.getElementById('loader-label');
@@ -1210,22 +1178,21 @@ async function carregarNibo() {
   console.log('[Nibo] Total créditos:', creditData.items.length, '| pagos:', creditData.items.filter(i=>i.isPaid).length);
   console.log('[Nibo] Total débitos:', debitData.items.length, '| pagos:', debitData.items.filter(i=>i.isPaid).length);
 
-  // ── Integração Asaas: paymentDate real ──────────────────────────
+  // ── Integração Asaas: receita mensal por paymentDate ──────────────────────────
   ASAAS_MAP = {};
+  ASAAS_MONTHLY_RECEITA = null;
   const _asaasToken = localStorage.getItem('c3x_asaas_token') || '';
   if (_asaasToken) {
-    loaderEl.textContent = 'Buscando datas de pagamento Asaas...';
+    loaderEl.textContent = 'Buscando receita Asaas...';
     try {
-      const { totalRef, dvList } = await carregarAsaasMap(_asaasToken);
-      enriquecerAsaasMapFallback(dvList);
-      console.log('[Asaas] ASAAS_MAP total entries:', Object.keys(ASAAS_MAP).length, '(via externalRef:', totalRef, '+ fallback cross-year)');
+      await carregarAsaasMonthlyReceita(_asaasToken);
     } catch(e) {
-      console.warn('[Asaas] Falha ao carregar:', e.message);
+      console.warn('[Asaas] Falha ao carregar receita mensal:', e.message);
     }
     loaderEl.textContent = 'Buscando saldo Asaas...';
     await carregarAsaasSaldos(_asaasToken);
   } else {
-    console.log('[Asaas] Token não configurado — receita usará dueDate como fallback.');
+    console.log('[Asaas] Token não configurado — receita usará dueDate do Nibo.');
   }
 
   loaderEl.textContent = 'Processando...';
@@ -1268,6 +1235,12 @@ async function carregarNibo() {
     } else if (catL.includes('destrava') || desc.includes('destrava') || catL.includes('fora do cardápio') || catL.includes('summit') || catL.includes('evento')) {
       REAL.destrava[m] += v;
     }
+  }
+
+  // Substituir REAL.receita pelos totais reais do Asaas (por paymentDate).
+  // Mais confiável que somar por dueDate do Nibo — mesma fonte do OFX importado.
+  if (ASAAS_MONTHLY_RECEITA) {
+    for (let m = 0; m < 12; m++) REAL.receita[m] = ASAAS_MONTHLY_RECEITA[m] || 0;
   }
 
   // Investimentos/distribuições: não entram no Resultado Operacional (função global — usada também no Fluxo de Caixa)
