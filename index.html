@@ -1047,16 +1047,18 @@ async function carregarAsaasMap(asaasToken) {
   const LIMIT = 100;
   let offset = 0;
   let totalRef = 0;
-  const hoje = new Date().toISOString().slice(0, 10);
-  const dvMap = {}; // fallback: `${dueDate}_${valor}` → [paymentDate, ...]
+  const prevYear = ANO_FILTRO - 1;
+  // Busca por dueDate do Q4 do ano anterior: captura TODOS os boletos com vencimento
+  // Out-Dez, independente de quando foram pagos (em dia=2025 ou atrasados=2026).
+  // Anterior abordagem (paymentDate[ge]) só via 1 de 9 itens cross-year.
+  const dvList = []; // [{dueDate, value, paymentDate}] apenas cross-year (paymentDate em ANO_FILTRO)
 
   while (true) {
     const params = new URLSearchParams({
       token: asaasToken,
       endpoint: 'payments',
-      status: 'RECEIVED',
-      'paymentDate[ge]': '2025-10-01',
-      'paymentDate[le]': hoje,
+      'dueDate[ge]': `${prevYear}-10-01`,
+      'dueDate[le]': `${prevYear}-12-31`,
       limit: LIMIT,
       offset,
     });
@@ -1069,19 +1071,18 @@ async function carregarAsaasMap(asaasToken) {
     const data = await resp.json();
 
     for (const p of (data.data || [])) {
-      // Prioridade 1: externalReference = scheduleId do Nibo (quando preenchido)
       if (p.externalReference && p.paymentDate) {
         ASAAS_MAP[p.externalReference] = p.paymentDate;
         totalRef++;
       }
-      // Fallback: indexa por dueDate + valor para match cruzado
-      // Normaliza: dueDate → primeiros 10 chars (YYYY-MM-DD), valor → float arredondado 2 casas
-      if (p.dueDate && p.paymentDate && p.value != null) {
-        const dNorm = String(p.dueDate).slice(0, 10);
-        const vNorm = parseFloat(p.value).toFixed(2);
-        const key = `${dNorm}_${vNorm}`;
-        if (!dvMap[key]) dvMap[key] = [];
-        dvMap[key].push(p.paymentDate);
+      // Só cross-year: dueDate em prevYear, paymentDate em ANO_FILTRO
+      if (p.dueDate && p.paymentDate && p.value != null &&
+          p.paymentDate.startsWith(String(ANO_FILTRO))) {
+        dvList.push({
+          dueDate:     String(p.dueDate).slice(0, 10),
+          value:       parseFloat(p.value),
+          paymentDate: p.paymentDate,
+        });
       }
     }
 
@@ -1090,36 +1091,32 @@ async function carregarAsaasMap(asaasToken) {
     if (offset > 9900) break;
   }
 
-  // Log amostra para diagnóstico de formato
-  const amostraAsaas = Object.keys(dvMap).slice(0, 3);
-  // Chaves 2025 que têm pelo menos um paymentDate em 2026 — os únicos que importam
-  const cross2025 = Object.entries(dvMap)
-    .filter(([k, dates]) => k.startsWith('2025') && dates.some(pd => pd.startsWith('2026')));
-  console.log('[Asaas] Chaves 2025 com paymentDate 2026 (' + cross2025.length + '): ' + JSON.stringify(cross2025.map(([k,d]) => k + ' → ' + d.filter(pd=>pd.startsWith('2026')))));
-  return { totalRef, dvMap };
+  console.log('[Asaas] Q4/' + prevYear + ' cross-year (' + dvList.length + '): ' +
+    JSON.stringify(dvList.map(p => p.dueDate + '_' + p.value + '→' + p.paymentDate)));
+  return { totalRef, dvList };
 }
 
-// Plano B: enriquece ASAAS_MAP para itens com dueDate no ano anterior pagos no ANO_FILTRO
-// Restrição dupla: dueDate deve ser de ANO_FILTRO-1, paymentDate deve ser de ANO_FILTRO
-// Isso evita matches falsos com itens de 2024 ou pagamentos dentro do mesmo ano
-function enriquecerAsaasMapFallback(dvMap) {
+// Match cross-year com tolerância de valor (±15%) para cobrir multas/juros
+// Só afeta itens Nibo com dueDate no ano anterior
+function enriquecerAsaasMapFallback(dvList) {
   let matched = 0;
-  const prevYearStr   = String(ANO_FILTRO - 1); // ex: "2025"
-  const anoFiltroStr  = String(ANO_FILTRO);      // ex: "2026"
+  const prevYearStr = String(ANO_FILTRO - 1);
+  const available = dvList.slice(); // cópia mutável para consumo
 
   for (const item of RAW_CREDITS) {
     if (!item.isPaid || item.isEntry || !item.scheduleId) continue;
     if (ASAAS_MAP[item.scheduleId]) continue;
     if (!item.dueDate || item.value == null) continue;
     const dNorm = String(item.dueDate).slice(0, 10);
-    if (!dNorm.startsWith(prevYearStr)) continue; // só dueDate do ano anterior
-    const vNorm = parseFloat(item.value).toFixed(2);
-    const key = `${dNorm}_${vNorm}`;
-    if (!dvMap[key] || dvMap[key].length === 0) continue;
-    // Procura paymentDate do ANO_FILTRO (cross-year)
-    const idx = dvMap[key].findIndex(pd => pd.startsWith(anoFiltroStr));
+    if (!dNorm.startsWith(prevYearStr)) continue;
+    const niboVal = parseFloat(item.value);
+    // Candidatos: mesma dueDate + valor dentro de ±15% (multas/juros)
+    const idx = available.findIndex(p =>
+      p.dueDate === dNorm && Math.abs(p.value - niboVal) / niboVal <= 0.15
+    );
     if (idx >= 0) {
-      ASAAS_MAP[item.scheduleId] = dvMap[key].splice(idx, 1)[0];
+      ASAAS_MAP[item.scheduleId] = available[idx].paymentDate;
+      available.splice(idx, 1);
       matched++;
     }
   }
@@ -1127,12 +1124,9 @@ function enriquecerAsaasMapFallback(dvMap) {
     i.isPaid && i.dueDate && String(i.dueDate).startsWith(prevYearStr) &&
     i.scheduleId && ASAAS_MAP[i.scheduleId]
   );
-  // Diagnóstico: mostra chaves Nibo 2025 vs chaves dvMap 2025 para comparar formatos
-  const niboKeys2025 = RAW_CREDITS.filter(i => i.isPaid && !i.isEntry && String(i.dueDate).startsWith('2025'))
-    .slice(0, 8).map(i => `${String(i.dueDate).slice(0,10)}_${parseFloat(i.value).toFixed(2)}`);
-  console.log('[Asaas] Cross-year matched:', matched);
-  console.log('[Asaas] Nibo keys 2025 amostra: ' + JSON.stringify(niboKeys2025));
-  console.log('[Asaas] Detalhe:', crossYear.map(i => ({ cliente: i.stakeholder?.name, dueDate: i.dueDate, paymentDate: ASAAS_MAP[i.scheduleId] })));
+  console.log('[Asaas] Cross-year matched: ' + matched);
+  console.log('[Asaas] Detalhe: ' + JSON.stringify(crossYear.map(i =>
+    ({ cliente: i.stakeholder?.name, dueDate: i.dueDate, paymentDate: ASAAS_MAP[i.scheduleId] }))));
 }
 
 async function carregarNibo() {
@@ -1161,9 +1155,9 @@ async function carregarNibo() {
   if (_asaasToken) {
     loaderEl.textContent = 'Buscando datas de pagamento Asaas...';
     try {
-      const { totalRef, dvMap } = await carregarAsaasMap(_asaasToken);
-      enriquecerAsaasMapFallback(dvMap);
-      console.log('[Asaas] ASAAS_MAP total entries:', Object.keys(ASAAS_MAP).length, '(via externalRef:', totalRef, '+ fallback dueDate+valor)');
+      const { totalRef, dvList } = await carregarAsaasMap(_asaasToken);
+      enriquecerAsaasMapFallback(dvList);
+      console.log('[Asaas] ASAAS_MAP total entries:', Object.keys(ASAAS_MAP).length, '(via externalRef:', totalRef, '+ fallback cross-year)');
     } catch(e) {
       console.warn('[Asaas] Falha ao carregar:', e.message);
     }
