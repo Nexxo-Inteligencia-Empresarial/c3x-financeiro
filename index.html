@@ -1096,10 +1096,13 @@ async function carregarAsaasMap(asaasToken) {
 }
 
 // Busca saldo atual e saldo de abertura do ano diretamente na API Asaas
-// SALDO_ASAAS_ATUAL = /finance/balance (saldo em tempo real)
-// SALDO_INICIAL_2026 = saldo_atual − net(financialTransactions do ANO_FILTRO)
+// Busca saldo atual da conta Asaas via /finance/balance.
+// NÃO calcula a abertura por /financialTransactions — Asaas inclui tarifas,
+// antecipações e ajustes que não existem nos schedules do Nibo, criando
+// inconsistência: abertura_Asaas + net_Nibo ≠ saldo_atual.
+// A abertura é calculada separadamente em calcularSaldoAbertura() depois
+// que o REAL já foi processado (mesma fonte de dados que o fluxo usa).
 async function carregarAsaasSaldos(asaasToken) {
-  // 1. Saldo atual
   try {
     const params = new URLSearchParams({ token: asaasToken, endpoint: 'finance/balance' });
     const resp = await fetch(`/api/asaas?${params}`);
@@ -1111,44 +1114,41 @@ async function carregarAsaasSaldos(asaasToken) {
       }
     }
   } catch(e) { console.warn('[Asaas] Saldo atual: erro -', e.message); }
+}
 
-  if (SALDO_ASAAS_ATUAL == null) return;
-
-  // 2. Net de transações do ANO_FILTRO → saldo de abertura = saldo_atual − net_ano
-  const LIMIT = 100;
-  let offset = 0;
-  const hoje = new Date().toISOString().slice(0, 10);
-  let netAno = 0;
-  try {
-    while (true) {
-      const params = new URLSearchParams({
-        token: asaasToken,
-        endpoint: 'financialTransactions',
-        startDate: `${ANO_FILTRO}-01-01`,
-        finishDate: hoje,
-        limit: LIMIT,
-        offset,
-      });
-      const resp = await fetch(`/api/asaas?${params}`);
-      if (!resp.ok) break;
-      const data = await resp.json();
-      for (const t of (data.data || [])) {
-        const v = parseFloat(t.value) || 0;
-        netAno += (t.type === 'CREDIT' ? v : -v);
-      }
-      if (!data.hasMore) break;
-      offset += LIMIT;
-      if (offset > 9900) break;
-    }
-    SALDO_INICIAL_2026 = SALDO_ASAAS_ATUAL - netAno;
-    localStorage.setItem('c3x_saldo_abertura_asaas', SALDO_INICIAL_2026.toFixed(2));
-    console.log('[Asaas] Saldo abertura ' + ANO_FILTRO + ': R$' + SALDO_INICIAL_2026.toFixed(2) +
-      ' | atual: R$' + SALDO_ASAAS_ATUAL.toFixed(2) + ' | net ' + ANO_FILTRO + ': R$' + netAno.toFixed(2));
-  } catch(e) {
-    console.warn('[Asaas] Saldo abertura: erro -', e.message);
+// Calcula SALDO_INICIAL_2026 como: saldo_atual − net_Nibo(ANO_FILTRO até hoje)
+// Usa exatamente os mesmos dados (RAW_CREDITS + RAW_DEBITS) que o fluxo usa,
+// garantindo que abertura + fluxo_acumulado = saldo_atual_Asaas.
+// Chamado após REAL ser processado (schedules já lidos e ASAAS_MAP aplicado).
+function calcularSaldoAbertura() {
+  if (SALDO_ASAAS_ATUAL == null) {
     const stored = parseFloat(localStorage.getItem('c3x_saldo_abertura_asaas') || '');
     SALDO_INICIAL_2026 = isNaN(stored) ? 14426.68 : stored;
+    console.log('[Fluxo] Saldo abertura (localStorage/default): R$' + SALDO_INICIAL_2026.toFixed(2));
+    return;
   }
+  const hoje = new Date();
+  const toDay = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const jan1  = new Date(ANO_FILTRO, 0, 1);
+  let netNibo = 0;
+  for (const item of RAW_CREDITS) {
+    const ok = item.isPaid === true || item.isEntry === true;
+    if (!ok) continue;
+    const ds = _dataCaixa(item); if (!ds) continue;
+    const dt = toDay(new Date(ds));
+    if (dt >= jan1 && dt <= toDay(hoje)) netNibo += Math.abs(item.value || 0);
+  }
+  for (const item of RAW_DEBITS) {
+    const ok = item.isPaid === true || (item.isPaid == null && Math.abs(item.openValue||0) === 0 && Math.abs(item.value||0) > 0);
+    if (!ok) continue;
+    const ds = item.paymentDate || item.dueDate || item.scheduleDate; if (!ds) continue;
+    const dt = toDay(new Date(ds));
+    if (dt >= jan1 && dt <= toDay(hoje)) netNibo -= Math.abs(item.value || 0);
+  }
+  SALDO_INICIAL_2026 = SALDO_ASAAS_ATUAL - netNibo;
+  localStorage.setItem('c3x_saldo_abertura_asaas', SALDO_INICIAL_2026.toFixed(2));
+  console.log('[Fluxo] Saldo abertura ' + ANO_FILTRO + ': R$' + SALDO_INICIAL_2026.toFixed(2) +
+    ' | atual: R$' + SALDO_ASAAS_ATUAL.toFixed(2) + ' | net Nibo: R$' + netNibo.toFixed(2));
 }
 
 // Match cross-year com tolerância de valor (±15%) para cobrir multas/juros
@@ -1292,14 +1292,6 @@ async function carregarNibo() {
   }
 
 
-  // ── Saldo de abertura: calculado via Asaas em carregarAsaasSaldos() ──────────
-  // Se token não configurado, usa localStorage ou default
-  if (!localStorage.getItem('c3x_asaas_token')) {
-    const stored = parseFloat(localStorage.getItem('c3x_saldo_abertura_asaas') || '');
-    SALDO_INICIAL_2026 = isNaN(stored) ? 14426.68 : stored;
-    console.log('[Fluxo] Saldo abertura (fallback):', SALDO_INICIAL_2026);
-  }
-
   // Resultado
   for (let i=0;i<12;i++) REAL.resultado[i] = REAL.receita[i] - REAL.despesa[i];
 
@@ -1318,6 +1310,9 @@ async function carregarNibo() {
     cached2.desp = [...setDesp];
     localStorage.setItem('c3x_nibo_cats_v4', JSON.stringify(cached2));
   } catch(e) {}
+
+  // Saldo de abertura — calculado após REAL usando mesma fonte dos lançamentos
+  calcularSaldoAbertura();
 }
 
 /* ═══════════════════════════════════════════
