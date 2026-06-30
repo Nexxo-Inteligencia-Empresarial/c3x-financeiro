@@ -1091,8 +1091,7 @@ async function carregarAsaasMap(asaasToken) {
     if (offset > 9900) break;
   }
 
-  console.log('[Asaas] Q4/' + prevYear + ' cross-year (' + dvList.length + '): ' +
-    JSON.stringify(dvList.map(p => p.dueDate + '_' + p.value + '→' + p.paymentDate)));
+  console.log('[Asaas] Q4/' + prevYear + ' cross-year: ' + dvList.length + ' pagamentos recebidos em ' + ANO_FILTRO);
   return { totalRef, dvList };
 }
 
@@ -1124,9 +1123,7 @@ function enriquecerAsaasMapFallback(dvList) {
     i.isPaid && i.dueDate && String(i.dueDate).startsWith(prevYearStr) &&
     i.scheduleId && ASAAS_MAP[i.scheduleId]
   );
-  console.log('[Asaas] Cross-year matched: ' + matched);
-  console.log('[Asaas] Detalhe: ' + JSON.stringify(crossYear.map(i =>
-    ({ cliente: i.stakeholder?.name, dueDate: i.dueDate, paymentDate: ASAAS_MAP[i.scheduleId] }))));
+  console.log('[Asaas] Cross-year matched: ' + matched + ' itens (dueDate ' + prevYearStr + ' → paymentDate ' + ANO_FILTRO + ')');
 }
 
 async function carregarNibo() {
