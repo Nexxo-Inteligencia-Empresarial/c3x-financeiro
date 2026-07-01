@@ -1239,10 +1239,6 @@ async function carregarNibo() {
   RAW_DEBITS = debitData.items || [];
   console.log('[Nibo] Total créditos:', creditData.items.length, '| pagos:', creditData.items.filter(i=>i.isPaid).length);
   console.log('[Nibo] Total débitos:', debitData.items.length, '| pagos:', debitData.items.filter(i=>i.isPaid).length);
-  // DEBUG: procura lançamento de 10k
-  const big = RAW_DEBITS.filter(i=>Math.abs(i.value||0)>=9000);
-  if(big.length) big.forEach(i=>console.log('[Nibo DEB >9k]',JSON.stringify({v:i.value,paid:i.isPaid,due:i.dueDate,pay:i.paymentDate,desc:i.description,stake:i.stakeholder?.name})));
-  else console.log('[Nibo DEB >9k] nenhum encontrado');
 
   // ── Integração Asaas: paymentDate real por item ──────────────────────────────
   ASAAS_MAP = {};
@@ -1304,7 +1300,7 @@ async function carregarNibo() {
   }
 
   // Investimentos/distribuições: não entram no Resultado Operacional (função global — usada também no Fluxo de Caixa)
-  if (!window.ehInvestimento) window.ehInvestimento = cat => /adiantamento de lucros|equipamentos|utensílio/i.test(cat);
+  if (!window.ehInvestimento) window.ehInvestimento = cat => /adiantamento de lucros|equipamentos|utensílio|acerto de contas|estorno|reversão/i.test(cat);
 
   // REGIME DE CAIXA: despesas — usa paymentDate (baixa manual) ou dueDate como fallback
   for (const item of (debitData.items||[])) {
@@ -2286,14 +2282,6 @@ function fluxoAgregarDados(semanas, cc) {
         }
       }
     }
-  }
-
-  // DEBUG TEMPORÁRIO — remover após diagnóstico
-  if (from===0 && to===0) {
-    const debJan = semanas.flatMap(s=>s.lancamentos.filter(l=>l.tipo==='saida_real'));
-    let soma=0;
-    debJan.forEach(l=>{ soma+=l.valor; if(l.valor>500) console.log('[DEB>500]',l.data.toISOString().slice(0,10),'|',l.valor.toFixed(2),'|',l.desc,'|',l.stakeholder); });
-    console.log('[Fluxo JAN] entradas='+semanas.reduce((t,s)=>t+s.entradas_real,0).toFixed(2)+' saidas='+soma.toFixed(2)+' saldo='+(SALDO_INICIAL_2026+semanas.reduce((t,s)=>t+s.entradas_real-s.saidas_real,0)).toFixed(2));
   }
 
   for (const s of semanas) {
