@@ -2284,20 +2284,6 @@ function fluxoAgregarDados(semanas, cc) {
     }
   }
 
-  const totCred = semanas.reduce((t,s)=>t+s.entradas_real,0);
-  const totDeb  = semanas.reduce((t,s)=>t+s.saidas_real,0);
-  console.log('[Fluxo DEBUG] período from='+from+' to='+to+
-    ' | entradas_real='+totCred.toFixed(2)+
-    ' | saidas_real='+totDeb.toFixed(2)+
-    ' | saldo_final='+(SALDO_INICIAL_2026+totCred-totDeb).toFixed(2));
-  if (from===0 && to===0) {
-    // Detalha cada débito de Janeiro para diagnóstico
-    const debJan = semanas.flatMap(s=>s.lancamentos.filter(l=>l.tipo==='saida_real'));
-    let somaDeb = 0;
-    debJan.forEach(l=>{ somaDeb+=l.valor; console.log('[Fluxo DEB]',l.data.toISOString().slice(0,10),'|',l.valor.toFixed(2),'|',l.desc,'|',l.stakeholder); });
-    console.log('[Fluxo DEB] TOTAL DÉBITOS JAN:', somaDeb.toFixed(2));
-  }
-
   for (const s of semanas) {
     acum += s.entradas_real - s.saidas_real;
     s.saldo_acum = acum;
