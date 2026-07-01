@@ -1212,7 +1212,7 @@ async function carregarAsaasSaldos(asaasToken) {
 // A fórmula dinâmica (ATUAL − recebidos + transferidos) foi descartada:
 // /transfers captura só transferências bancárias, não PIX nem pagamentos,
 // causando abertura inflada (~R$32k em vez de R$24.427) e saldo final errado.
-const SALDO_ABERTURA_DEFAULT = 24427.12; // saldo real 01/Jan/2026 — extrato Asaas
+const SALDO_ABERTURA_DEFAULT = 14426.68; // saldo operacional 01/Jan/2026 (24427.12 − 10000.44 reversão Hubnexxo/Paulo)
 function calcularSaldoAbertura() {
   SALDO_INICIAL_2026 = SALDO_ABERTURA_DEFAULT;
   localStorage.removeItem('c3x_saldo_abertura_asaas'); // remove cache de cálculos anteriores incorretos
