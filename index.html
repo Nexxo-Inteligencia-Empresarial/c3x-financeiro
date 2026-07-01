@@ -1197,21 +1197,41 @@ async function carregarAsaasSaldos(asaasToken) {
   } catch(e) { console.warn('[Asaas] Saldo/fluxo:', e.message); }
 }
 
-// Saldo de abertura = atual − recebidos_no_ano + transferidos_para_fora_no_ano
-// (fórmula exclusiva da conta Asaas — não depende dos schedules do Nibo)
+// Saldo de abertura em 01/Jan do ANO_FILTRO.
+// Fórmula: ATUAL − recebidos_ano(netValue) + transferidos_ano
+//   — só salva no cache se o resultado for positivo (negativo = API de transferências incompleta)
+//   — cache envenenado (valor negativo) é descartado e substituído pelo padrão
+const SALDO_ABERTURA_DEFAULT = 14426.68;
 function calcularSaldoAbertura() {
+  // Leitura de cache: descarta valor negativo (cache envenenado por cálculo anterior errado)
+  const _cache = () => {
+    const s = parseFloat(localStorage.getItem('c3x_saldo_abertura_asaas') || '');
+    return (!isNaN(s) && s >= 0) ? s : SALDO_ABERTURA_DEFAULT;
+  };
+
   if (SALDO_ASAAS_ATUAL == null || ASAAS_RECEBIDOS_ANO == null || ASAAS_TRANSFERIDOS_ANO == null) {
-    const stored = parseFloat(localStorage.getItem('c3x_saldo_abertura_asaas') || '');
-    SALDO_INICIAL_2026 = isNaN(stored) ? 14426.68 : stored;
+    SALDO_INICIAL_2026 = _cache();
     console.log('[Fluxo] Saldo abertura (cache/default): R$' + SALDO_INICIAL_2026.toFixed(2));
     return;
   }
-  SALDO_INICIAL_2026 = SALDO_ASAAS_ATUAL - ASAAS_RECEBIDOS_ANO + ASAAS_TRANSFERIDOS_ANO;
-  localStorage.setItem('c3x_saldo_abertura_asaas', SALDO_INICIAL_2026.toFixed(2));
-  console.log('[Fluxo] Saldo abertura ' + ANO_FILTRO + ': R$' + SALDO_INICIAL_2026.toFixed(2) +
-    ' | atual: R$' + SALDO_ASAAS_ATUAL.toFixed(2) +
-    ' | recebidos: R$' + ASAAS_RECEBIDOS_ANO.toFixed(2) +
-    ' | transferidos: R$' + ASAAS_TRANSFERIDOS_ANO.toFixed(2));
+
+  const calculado = SALDO_ASAAS_ATUAL - ASAAS_RECEBIDOS_ANO + ASAAS_TRANSFERIDOS_ANO;
+
+  if (calculado >= 0) {
+    SALDO_INICIAL_2026 = calculado;
+    localStorage.setItem('c3x_saldo_abertura_asaas', calculado.toFixed(2));
+    console.log('[Fluxo] Saldo abertura ' + ANO_FILTRO + ': R$' + calculado.toFixed(2) +
+      ' | atual: R$' + SALDO_ASAAS_ATUAL.toFixed(2) +
+      ' | recebidos: R$' + ASAAS_RECEBIDOS_ANO.toFixed(2) +
+      ' | transferidos: R$' + ASAAS_TRANSFERIDOS_ANO.toFixed(2));
+  } else {
+    // Transferências incompletas na API → resultado negativo, não usar
+    SALDO_INICIAL_2026 = _cache();
+    console.warn('[Fluxo] Saldo abertura calculado negativo (R$' + calculado.toFixed(2) +
+      ') — API de transferências provavelmente incompleta. Usando fallback: R$' + SALDO_INICIAL_2026.toFixed(2) +
+      ' | recebidos: R$' + ASAAS_RECEBIDOS_ANO.toFixed(2) +
+      ' | transferidos: R$' + ASAAS_TRANSFERIDOS_ANO.toFixed(2));
+  }
 }
 
 
