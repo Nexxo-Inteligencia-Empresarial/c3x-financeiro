@@ -898,6 +898,7 @@ let ASAAS_RECEBIDOS_ANO = null;    // total recebido no ANO_FILTRO por paymentDa
 let ASAAS_TRANSFERIDOS_ANO = null; // total transferido para fora no ANO_FILTRO (via Asaas API)
 let SALDO_INICIAL_2026 = 0;        // saldo de abertura em 01/Jan (calculado via Asaas)
 let ASAAS_MAP = {};                // scheduleId → paymentDate real (via Asaas API)
+let ASAAS_TAXAS_LIST = [];         // [{date, valor}] taxas Asaas (value − netValue) por recebimento
 
 // Regime de caixa: data de recebimento.
 // Prioridade: ASAAS_MAP[scheduleId] > paymentDate > dueDate > scheduleDate
@@ -1157,6 +1158,7 @@ async function carregarAsaasSaldos(asaasToken) {
 
     // 2. Total recebido no ANO_FILTRO por paymentDate (usa netValue — já descontadas tarifas Asaas)
     let recebidos = 0, off2 = 0;
+    const taxasList = [];
     while (true) {
       const p2 = new URLSearchParams({
         endpoint: 'payments', status: 'RECEIVED',
@@ -1167,11 +1169,18 @@ async function carregarAsaasSaldos(asaasToken) {
       const r2 = await fetch(`/api/asaas?${p2}`, { headers: { 'X-Asaas-Token': asaasToken } });
       if (!r2.ok) break;
       const d2 = await r2.json();
-      for (const it of (d2.data || [])) recebidos += parseFloat(it.netValue ?? it.value ?? 0);
+      for (const it of (d2.data || [])) {
+        const v  = parseFloat(it.value    ?? 0);
+        const nv = parseFloat(it.netValue ?? it.value ?? 0);
+        recebidos += nv;
+        const taxa = v - nv;
+        if (taxa > 0 && it.paymentDate) taxasList.push({ date: it.paymentDate, valor: taxa });
+      }
       if (!d2.hasMore) break;
       off2 += 100; if (off2 > 9900) break;
     }
     ASAAS_RECEBIDOS_ANO = recebidos;
+    ASAAS_TAXAS_LIST = taxasList;
 
     // 3. Total transferido para fora no ANO_FILTRO (transferências para conta bancária externa)
     let transferidos = 0, off3 = 0;
@@ -1191,8 +1200,10 @@ async function carregarAsaasSaldos(asaasToken) {
     }
     ASAAS_TRANSFERIDOS_ANO = transferidos;
 
+    const totalTaxas = taxasList.reduce((s, t) => s + t.valor, 0);
     console.log('[Asaas] atual: R$' + (SALDO_ASAAS_ATUAL?.toFixed(2) ?? '?') +
       ' | recebidos ' + ANO_FILTRO + ': R$' + recebidos.toFixed(2) +
+      ' | taxas: R$' + totalTaxas.toFixed(2) +
       ' | transferidos: R$' + transferidos.toFixed(2));
   } catch(e) { console.warn('[Asaas] Saldo/fluxo:', e.message); }
 }
@@ -2253,6 +2264,17 @@ function fluxoAgregarDados(semanas, cc) {
     }
   }
 
+  // Taxas Asaas (value − netValue por recebimento) — só na visão geral, sem filtro de CC
+  if (!ccFiltro) {
+    for (const taxa of ASAAS_TAXAS_LIST) {
+      const d = new Date(taxa.date);
+      const s = findSem(d);
+      if (!s) continue;
+      s.saidas_real += taxa.valor;
+      s.lancamentos.push({ tipo: 'saida_real', data: toDay(d), desc: 'Taxa Asaas', valor: taxa.valor, stakeholder: 'Asaas', cc: 'Sem CC' });
+    }
+  }
+
   for (const s of semanas) s.lancamentos.sort((a, b) => a.data - b.data);
 
   // Saldo acumulado: parte do saldo de abertura correto da conta Recebimentos Asaas
@@ -2277,6 +2299,14 @@ function fluxoAgregarDados(semanas, cc) {
         if (!ds) continue;
         const dt = _tD(new Date(ds));
         if (dt.getFullYear()===ANO_FILTRO && dt >= jan1 && dt < periodoInicio) acum -= Math.abs(item.value||0);
+      }
+      // Taxas Asaas acumuladas antes do período exibido
+      if (!ccFiltro) {
+        for (const taxa of ASAAS_TAXAS_LIST) {
+          const dt = new Date(taxa.date);
+          const dtN = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+          if (dtN.getFullYear()===ANO_FILTRO && dtN >= jan1 && dtN < periodoInicio) acum -= taxa.valor;
+        }
       }
     }
   }
