@@ -1239,6 +1239,10 @@ async function carregarNibo() {
   RAW_DEBITS = debitData.items || [];
   console.log('[Nibo] Total créditos:', creditData.items.length, '| pagos:', creditData.items.filter(i=>i.isPaid).length);
   console.log('[Nibo] Total débitos:', debitData.items.length, '| pagos:', debitData.items.filter(i=>i.isPaid).length);
+  // DEBUG: procura lançamento de 10k
+  const big = RAW_DEBITS.filter(i=>Math.abs(i.value||0)>=9000);
+  if(big.length) big.forEach(i=>console.log('[Nibo DEB >9k]',JSON.stringify({v:i.value,paid:i.isPaid,due:i.dueDate,pay:i.paymentDate,desc:i.description,stake:i.stakeholder?.name})));
+  else console.log('[Nibo DEB >9k] nenhum encontrado');
 
   // ── Integração Asaas: paymentDate real por item ──────────────────────────────
   ASAAS_MAP = {};
