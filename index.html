@@ -899,6 +899,13 @@ let ASAAS_TRANSFERIDOS_ANO = null; // total transferido para fora no ANO_FILTRO 
 let SALDO_INICIAL_2026 = 0;        // saldo de abertura em 01/Jan (calculado via Asaas)
 let ASAAS_MAP = {};                // scheduleId → paymentDate real (via Asaas API)
 let ASAAS_TAXAS_LIST = [];         // [{date, valor}] taxas Asaas (value − netValue) por recebimento
+let ASAAS_ENTRADAS_LIST = [];      // [{date, valor, desc, stakeholder}] recebimentos realizados (netValue)
+let ASAAS_SAIDAS_LIST = [];        // [{date, valor, desc, stakeholder, tipo}] bill-payment + transfers
+
+// Saldo verificado em 01/Jan de cada ano no extrato Asaas (fonte de verdade para abertura do fluxo)
+const ASAAS_SALDO_ABERTURA = {
+  2026: 24427.12,
+};
 
 // Regime de caixa: data de recebimento.
 // Prioridade: ASAAS_MAP[scheduleId] > paymentDate > dueDate > scheduleDate
@@ -1135,16 +1142,15 @@ function enriquecerAsaasMapFallback(dvList) {
   console.log('[Asaas] ASAAS_MAP: ' + matched + ' itens com paymentDate corrigido');
 }
 
-// Busca saldo atual + total recebido e total transferido no ANO_FILTRO diretamente da API Asaas.
-// Esses três valores permitem calcular o saldo de abertura em calcularSaldoAbertura():
-//   ABERTURA = ATUAL − RECEBIDOS_ANO + TRANSFERIDOS_ANO
+// Busca saldo atual + movimentos realizados do ANO_FILTRO da API Asaas.
+// Entradas: /payments?status=RECEIVED (netValue)
+// Saídas:   /transfers?status=DONE + /bill-payment?status=DONE
 async function carregarAsaasSaldos(asaasToken) {
   const hoje = new Date();
   const anoFmt = String(ANO_FILTRO);
   const hojeFmt = anoFmt + '-' +
     String(hoje.getMonth() + 1).padStart(2, '0') + '-' +
     String(hoje.getDate()).padStart(2, '0');
-  // Para anos passados usa 31/12 como limite; para o ano corrente usa hoje
   const limFmt = hoje.getFullYear() === ANO_FILTRO ? hojeFmt : `${anoFmt}-12-31`;
 
   try {
@@ -1156,9 +1162,9 @@ async function carregarAsaasSaldos(asaasToken) {
       if (d1.balance != null) SALDO_ASAAS_ATUAL = parseFloat(d1.balance);
     }
 
-    // 2. Total recebido no ANO_FILTRO por paymentDate (usa netValue — já descontadas tarifas Asaas)
+    // 2. Pagamentos recebidos — monta ASAAS_ENTRADAS_LIST com netValue por item
     let recebidos = 0, off2 = 0;
-    const taxasList = [];
+    const taxasList = [], entradasList = [];
     while (true) {
       const p2 = new URLSearchParams({
         endpoint: 'payments', status: 'RECEIVED',
@@ -1175,14 +1181,21 @@ async function carregarAsaasSaldos(asaasToken) {
         recebidos += nv;
         const taxa = v - nv;
         if (taxa > 0 && it.paymentDate) taxasList.push({ date: it.paymentDate, valor: taxa });
+        if (nv > 0 && it.paymentDate) entradasList.push({
+          date: it.paymentDate, valor: nv,
+          desc: it.description || it.billingType || 'Recebimento',
+          stakeholder: it.customerName || '—',
+        });
       }
       if (!d2.hasMore) break;
       off2 += 100; if (off2 > 9900) break;
     }
     ASAAS_RECEBIDOS_ANO = recebidos;
     ASAAS_TAXAS_LIST = taxasList;
+    ASAAS_ENTRADAS_LIST = entradasList;
 
-    // 3. Total transferido para fora no ANO_FILTRO (transferências para conta bancária externa)
+    // 3. Transferências saídas — monta lista com data e valor por item
+    const saidasList = [];
     let transferidos = 0, off3 = 0;
     while (true) {
       const p3 = new URLSearchParams({
@@ -1194,42 +1207,61 @@ async function carregarAsaasSaldos(asaasToken) {
       const r3 = await fetch(`/api/asaas?${p3}`, { headers: { 'X-Asaas-Token': asaasToken } });
       if (!r3.ok) break;
       const d3 = await r3.json();
-      for (const t of (d3.data || [])) transferidos += parseFloat(t.value ?? 0);
+      for (const t of (d3.data || [])) {
+        const v = parseFloat(t.value ?? 0);
+        transferidos += v;
+        const date = t.effectiveDate || t.dateCreated;
+        if (v > 0 && date) saidasList.push({
+          date, valor: v,
+          desc: t.description || 'Transferência bancária',
+          stakeholder: t.bankAccount?.bank?.name || '—',
+          tipo: 'transfer',
+        });
+      }
       if (!d3.hasMore) break;
       off3 += 100; if (off3 > 9900) break;
     }
     ASAAS_TRANSFERIDOS_ANO = transferidos;
 
+    // 4. Contas pagas (bill-payment)
+    let off4 = 0;
+    while (true) {
+      const p4 = new URLSearchParams({
+        endpoint: 'bill-payment', status: 'DONE',
+        'paymentDate[ge]': `${anoFmt}-01-01`,
+        'paymentDate[le]': limFmt,
+        limit: 100, offset: off4,
+      });
+      const r4 = await fetch(`/api/asaas?${p4}`, { headers: { 'X-Asaas-Token': asaasToken } });
+      if (!r4.ok) { console.warn('[Asaas] bill-payment indisponível (status ' + r4.status + ')'); break; }
+      const d4 = await r4.json();
+      if (d4.errors) { console.warn('[Asaas] bill-payment:', JSON.stringify(d4.errors)); break; }
+      for (const b of (d4.data || [])) {
+        const v = parseFloat(b.value ?? 0);
+        if (v > 0 && b.paymentDate) saidasList.push({
+          date: b.paymentDate, valor: v,
+          desc: b.description || b.identificationField || 'Pagamento',
+          stakeholder: '—', tipo: 'bill-payment',
+        });
+      }
+      if (!d4.hasMore) break;
+      off4 += 100; if (off4 > 9900) break;
+    }
+    ASAAS_SAIDAS_LIST = saidasList;
+
     const totalTaxas = taxasList.reduce((s, t) => s + t.valor, 0);
-    console.log('[Asaas] atual: R$' + (SALDO_ASAAS_ATUAL?.toFixed(2) ?? '?') +
-      ' | recebidos ' + ANO_FILTRO + ': R$' + recebidos.toFixed(2) +
+    const totalSaidas = saidasList.reduce((s, t) => s + t.valor, 0);
+    console.log('[Asaas] saldo_atual: R$' + (SALDO_ASAAS_ATUAL?.toFixed(2) ?? '?') +
+      ' | entradas: R$' + recebidos.toFixed(2) +
       ' | taxas: R$' + totalTaxas.toFixed(2) +
-      ' | transferidos: R$' + transferidos.toFixed(2));
+      ' | saídas (transfer+bill): R$' + totalSaidas.toFixed(2) +
+      ' | abertura_calculada: R$' + ((SALDO_ASAAS_ATUAL ?? 0) - recebidos + totalSaidas).toFixed(2));
   } catch(e) { console.warn('[Asaas] Saldo/fluxo:', e.message); }
 }
 
-// Saldo de abertura em 01/Jan/2026 verificado no extrato Asaas.
-// A fórmula dinâmica (ATUAL − recebidos + transferidos) foi descartada:
-// /transfers captura só transferências bancárias, não PIX nem pagamentos,
-// causando abertura inflada (~R$32k em vez de R$24.427) e saldo final errado.
-const SALDO_ABERTURA_DEFAULT = 14426.68; // saldo operacional 01/Jan/2026 (24427.12 − 10000.44 reversão Hubnexxo/Paulo)
-
-// Saldos mensais verificados no extrato Asaas.
-// Chave = mês 1-based (1=Jan … 12=Dez).
-// Mês M é a abertura do período M (= fechamento verificado do mês M-1).
-// Atualizar aqui após conferir cada mês com o extrato Asaas.
-const SALDO_ABERTURA_MENSAL = {
-  2026: {
-    1: 16912.20,  // Jan: ajustado para fechar em R$42.497,32 (net Nibo Jan = R$25.585,12)
-    2: 42497.32,  // Fev: fechamento verificado de Jan/2026 (abertura Fev a ajustar)
-    3: 43306.92,  // Mar: fechamento verificado de Fev/2026
-  }
-};
-
 function calcularSaldoAbertura() {
-  SALDO_INICIAL_2026 = SALDO_ABERTURA_DEFAULT;
+  SALDO_INICIAL_2026 = 0; // substituído por ASAAS_SALDO_ABERTURA no fluxo
   localStorage.removeItem('c3x_saldo_abertura_asaas');
-  console.log('[Fluxo] Saldo abertura 2026: R$' + SALDO_INICIAL_2026.toFixed(2));
 }
 
 
@@ -2154,16 +2186,13 @@ function fluxoGerarSemanas(from, to) {
 
 function fluxoAgregarDados(semanas, cc) {
   const [from, to] = periodoMeses();
-  // Comparações apenas por data (sem hora) — datas da API vêm como UTC midnight
-  // e em UTC-3 viram véspera às 21h, criando brechas entre semanas se não normalizado
   const toDay  = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const inicio = new Date(ANO_FILTRO, from, 1);     // local midnight — já é só-data
-  const fim    = new Date(ANO_FILTRO, to + 1, 0);   // último dia do mês — local midnight
-
+  const inicio = new Date(ANO_FILTRO, from, 1);
+  const fim    = new Date(ANO_FILTRO, to + 1, 0);
   const ccFiltro = cc !== 'geral' ? cc : null;
 
   const findSem = d => {
-    const dd = toDay(d); // normaliza para dia local, elimina desvio UTC
+    const dd = toDay(d);
     if (dd < inicio || dd > fim) return null;
     for (const s of semanas) if (dd >= s.start && dd <= s.end) return s;
     return null;
@@ -2174,139 +2203,121 @@ function fluxoAgregarDados(semanas, cc) {
     return lista.map(c => c.costCenterDescription || c.description || c.name || '').filter(Boolean);
   };
 
-  // Créditos — mesma lógica de valor que carregarNibo()
+  if (!ccFiltro) {
+    // ── VISÃO GERAL: realizados 100% do Asaas ──
+
+    for (const ent of ASAAS_ENTRADAS_LIST) {
+      const d = new Date(ent.date);
+      const s = findSem(d);
+      if (!s) continue;
+      s.entradas_real += ent.valor;
+      s.lancamentos.push({ tipo: 'entrada_real', data: toDay(d), desc: ent.desc, valor: ent.valor, stakeholder: ent.stakeholder, cc: 'Asaas' });
+    }
+
+    for (const sai of ASAAS_SAIDAS_LIST) {
+      const d = new Date(sai.date);
+      const s = findSem(d);
+      if (!s) continue;
+      s.saidas_real += sai.valor;
+      s.lancamentos.push({ tipo: 'saida_real', data: toDay(d), desc: sai.desc, valor: sai.valor, stakeholder: sai.stakeholder, cc: 'Asaas' });
+    }
+
+  } else {
+    // ── VISÃO POR CC: realizados do Nibo (Asaas não tem centro de custo) ──
+
+    for (const item of RAW_CREDITS) {
+      if (!ccDeItem(item).includes(ccFiltro)) continue;
+      const ccLabel    = ccDeItem(item)[0] || 'Sem CC';
+      const stake      = item.stakeholder?.name || '—';
+      const desc       = item.description || '—';
+      const isPaidTrue = item.isPaid === true || item.isEntry === true;
+      const vReal      = isPaidTrue ? Math.abs(item.value || 0) : Math.abs(item.value || 0) - Math.abs(item.openValue || 0);
+      if (vReal > 0) {
+        const dStr = _dataCaixa(item);
+        if (dStr) {
+          const d = new Date(dStr); const s = findSem(d);
+          if (s) { s.entradas_real += vReal; s.lancamentos.push({ tipo: 'entrada_real', data: toDay(d), desc, valor: vReal, stakeholder: stake, cc: ccLabel }); }
+        }
+      }
+    }
+
+    for (const item of RAW_DEBITS) {
+      const v = Math.abs(item.value || 0); if (!v) continue;
+      if (!ccDeItem(item).includes(ccFiltro)) continue;
+      const ccLabel = ccDeItem(item)[0] || 'Sem CC';
+      const stake   = item.stakeholder?.name || '—';
+      const desc    = item.description || '—';
+      const pago    = item.isPaid === true || (item.isPaid == null && Math.abs(item.openValue||0) === 0 && v > 0);
+      if (!pago) continue;
+      const dStr = item.isPaid === true ? (item.paymentDate || item.dueDate || item.scheduleDate) : (item.dueDate || item.scheduleDate);
+      if (!dStr) continue;
+      const d = new Date(dStr); const s = findSem(d);
+      if (s) { s.saidas_real += v; s.lancamentos.push({ tipo: 'saida_real', data: toDay(d), desc, valor: v, stakeholder: stake, cc: ccLabel }); }
+    }
+  }
+
+  // ── PROVISIONADOS: sempre Nibo (agendamentos futuros não pagos) ──
+
   for (const item of RAW_CREDITS) {
     if (ccFiltro && !ccDeItem(item).includes(ccFiltro)) continue;
-
-    const ccLabel    = ccDeItem(item)[0] || 'Sem CC';
-    const stake      = item.stakeholder?.name || '—';
-    const desc       = item.description || '—';
-    const isPaidTrue = item.isPaid === true || item.isEntry === true;
-    const vReal      = isPaidTrue
-      ? Math.abs(item.value || 0)
-      : Math.abs(item.value || 0) - Math.abs(item.openValue || 0); // parcialmente pago
-    const vPrev      = !isPaidTrue ? Math.abs(item.openValue || 0) : 0;
-
-    // Parte realizada
-    if (vReal > 0) {
-      const dStr = _dataCaixa(item);
-      if (dStr) {
-        const d = new Date(dStr);
-        const s = findSem(d); // findSem já filtra por período e normaliza timezone
-        if (s) {
-          s.entradas_real += vReal;
-          s.lancamentos.push({ tipo: 'entrada_real', data: toDay(d), desc, valor: vReal, stakeholder: stake, cc: ccLabel });
-        }
-      }
-    }
-
-    // Parte ainda a receber (só para não-pagos com saldo aberto)
-    if (vPrev > 0) {
-      const dStr = item.dueDate || item.scheduleDate;
-      if (dStr) {
-        const d = new Date(dStr);
-        const s = findSem(d);
-        if (s) {
-          s.entradas_prev += vPrev;
-          s.lancamentos.push({ tipo: 'entrada_prev', data: toDay(d), desc, valor: vPrev, stakeholder: stake, cc: ccLabel });
-        }
-      }
-    }
-  }
-
-  // Débitos
-  for (const item of RAW_DEBITS) {
-    const v = Math.abs(item.value || 0);
-    if (v <= 0) continue;
-    if (ccFiltro && !ccDeItem(item).includes(ccFiltro)) continue;
-
+    if (item.isPaid === true || item.isEntry === true) continue;
+    const vPrev = Math.abs(item.openValue || 0); if (!vPrev) continue;
+    const dStr = item.dueDate || item.scheduleDate; if (!dStr) continue;
+    const d = new Date(dStr); const s = findSem(d); if (!s) continue;
     const ccLabel = ccDeItem(item)[0] || 'Sem CC';
-    const stake   = item.stakeholder?.name || '—';
-    const desc    = item.description || '—';
-    const cat     = item.categories?.[0]?.categoryName || item.categoryName || '';
-    // Fluxo de Caixa inclui TODOS os desembolsos (inclusive distribuições/investimentos)
-    // pois todos saem da conta bancária — diferente da Visão Executiva (operacional)
-    const pago    = item.isPaid === true || (item.isPaid == null && Math.abs(item.openValue||0) === 0 && v > 0);
-
-    if (pago) {
-      const dStr = item.isPaid === true
-        ? (item.paymentDate || item.dueDate || item.scheduleDate)
-        : (item.dueDate || item.scheduleDate);
-      if (!dStr) continue;
-      const d = new Date(dStr);
-      const s = findSem(d);
-      if (!s) continue;
-      s.saidas_real += v;
-      s.lancamentos.push({ tipo: 'saida_real', data: toDay(d), desc, valor: v, stakeholder: stake, cc: ccLabel });
-    } else {
-      const dStr = item.dueDate || item.scheduleDate;
-      if (!dStr) continue;
-      const d = new Date(dStr);
-      const s = findSem(d);
-      if (!s) continue;
-      const vPrev = Math.abs(item.openValue || 0) > 0 ? Math.abs(item.openValue) : v;
-      s.saidas_prev += vPrev;
-      s.lancamentos.push({ tipo: 'saida_prev', data: toDay(d), desc, valor: vPrev, stakeholder: stake, cc: ccLabel });
-    }
+    s.entradas_prev += vPrev;
+    s.lancamentos.push({ tipo: 'entrada_prev', data: toDay(d), desc: item.description || '—', valor: vPrev, stakeholder: item.stakeholder?.name || '—', cc: ccLabel });
   }
 
-  // Taxas Asaas (value − netValue por recebimento) — só na visão geral, sem filtro de CC
-  if (!ccFiltro) {
-    for (const taxa of ASAAS_TAXAS_LIST) {
-      const d = new Date(taxa.date);
-      const s = findSem(d);
-      if (!s) continue;
-      s.saidas_real += taxa.valor;
-      s.lancamentos.push({ tipo: 'saida_real', data: toDay(d), desc: 'Taxa Asaas', valor: taxa.valor, stakeholder: 'Asaas', cc: 'Sem CC' });
-    }
+  for (const item of RAW_DEBITS) {
+    const v = Math.abs(item.value || 0); if (!v) continue;
+    if (ccFiltro && !ccDeItem(item).includes(ccFiltro)) continue;
+    const pago = item.isPaid === true || (item.isPaid == null && Math.abs(item.openValue||0) === 0 && v > 0);
+    if (pago) continue;
+    const vPrev = Math.abs(item.openValue || 0) > 0 ? Math.abs(item.openValue) : v;
+    if (!vPrev) continue;
+    const dStr = item.dueDate || item.scheduleDate; if (!dStr) continue;
+    const d = new Date(dStr); const s = findSem(d); if (!s) continue;
+    const ccLabel = ccDeItem(item)[0] || 'Sem CC';
+    s.saidas_prev += vPrev;
+    s.lancamentos.push({ tipo: 'saida_prev', data: toDay(d), desc: item.description || '—', valor: vPrev, stakeholder: item.stakeholder?.name || '—', cc: ccLabel });
   }
 
   for (const s of semanas) s.lancamentos.sort((a, b) => a.data - b.data);
 
-  // Saldo acumulado: usa saldo mensal verificado se disponível, senão acumula pelo Nibo
-  const _saldoVerificado = (SALDO_ABERTURA_MENSAL[ANO_FILTRO] || {})[from + 1];
-  let acum = _saldoVerificado != null ? _saldoVerificado : SALDO_INICIAL_2026;
-  if (_saldoVerificado == null && semanas.length > 0 && SALDO_INICIAL_2026 !== 0) {
-    // Se o período não começa em Jan 1, avança o saldo pelos movimentos anteriores via Nibo
-    const periodoInicio = semanas[0].start;
-    const jan1 = new Date(ANO_FILTRO, 0, 1);
-    if (periodoInicio > jan1) {
-      const _tD = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-      for (const item of RAW_CREDITS) {
-        const ok = item.isPaid===true||item.isEntry===true; if (!ok) continue;
-        const vr = Math.abs(item.value||0); if (!vr) continue;
-        const ds = _dataCaixa(item); if (!ds) continue;
-        const dt = _tD(new Date(ds));
-        if (dt.getFullYear()===ANO_FILTRO && dt >= jan1 && dt < periodoInicio) acum += vr;
-      }
-      for (const item of RAW_DEBITS) {
-        const ok = item.isPaid===true||(item.isPaid==null&&Math.abs(item.openValue||0)===0&&Math.abs(item.value||0)>0);
-        if (!ok) continue;
-        const ds = item.isPaid===true?(item.paymentDate||item.dueDate||item.scheduleDate):(item.dueDate||item.scheduleDate);
-        if (!ds) continue;
-        const dt = _tD(new Date(ds));
-        if (dt.getFullYear()===ANO_FILTRO && dt >= jan1 && dt < periodoInicio) acum -= Math.abs(item.value||0);
-      }
-      // Taxas Asaas acumuladas antes do período exibido
-      if (!ccFiltro) {
-        for (const taxa of ASAAS_TAXAS_LIST) {
-          const dt = new Date(taxa.date);
-          const dtN = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
-          if (dtN.getFullYear()===ANO_FILTRO && dtN >= jan1 && dtN < periodoInicio) acum -= taxa.valor;
+  // ── SALDO ACUMULADO ──
+  let acum = 0;
+  if (!ccFiltro) {
+    // Parte do saldo real Asaas em 01/Jan e acumula pelos movimentos Asaas antes do período
+    acum = ASAAS_SALDO_ABERTURA[ANO_FILTRO] ?? 0;
+    if (semanas.length > 0) {
+      const periodoInicio = semanas[0].start;
+      const jan1 = new Date(ANO_FILTRO, 0, 1);
+      if (periodoInicio > jan1) {
+        for (const ent of ASAAS_ENTRADAS_LIST) {
+          const dt = toDay(new Date(ent.date));
+          if (dt >= jan1 && dt < periodoInicio) acum += ent.valor;
+        }
+        for (const sai of ASAAS_SAIDAS_LIST) {
+          const dt = toDay(new Date(sai.date));
+          if (dt >= jan1 && dt < periodoInicio) acum -= sai.valor;
         }
       }
     }
   }
+  // CC mode: acum = 0 (total relativo ao CC, não saldo bancário)
 
   for (const s of semanas) {
     acum += s.entradas_real - s.saidas_real;
     s.saldo_acum = acum;
   }
-  const _totEnt = semanas.reduce((s,w)=>s+w.entradas_real,0);
-  const _totSai = semanas.reduce((s,w)=>s+w.saidas_real,0);
-  const _saldoFinal = semanas.length ? semanas[semanas.length-1].saldo_acum : 0;
-  const [_from] = periodoMeses();
-  console.log(`[Fluxo período M${_from+1}] abertura=${(acum - (_totEnt - _totSai)).toFixed(2)} entradas=${_totEnt.toFixed(2)} saidas=${_totSai.toFixed(2)} net=${(_totEnt-_totSai).toFixed(2)} saldo_final=${_saldoFinal.toFixed(2)}`);
+
+  if (!ccFiltro) {
+    const _totEnt = semanas.reduce((s,w)=>s+w.entradas_real,0);
+    const _totSai = semanas.reduce((s,w)=>s+w.saidas_real,0);
+    const _saldoFinal = semanas.length ? semanas[semanas.length-1].saldo_acum : 0;
+    console.log(`[Fluxo Asaas M${from+1}→M${to+1}] entradas=${_totEnt.toFixed(2)} saidas=${_totSai.toFixed(2)} saldo_final=${_saldoFinal.toFixed(2)}`);
+  }
   return semanas;
 }
 
