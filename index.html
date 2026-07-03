@@ -1293,14 +1293,17 @@ async function carregarAsaasSaldos(asaasToken) {
       const d5 = await r5.json();
       if (d5.errors) { console.warn('[Asaas] financialTransactions errors:', JSON.stringify(d5.errors)); break; }
       const items5 = d5.data || [];
-      if (off5 === 0) console.log('[Asaas] financialTransactions p1: ' + items5.length + ' itens | totalCount=' + d5.totalCount);
+      if (off5 === 0) {
+        console.log('[Asaas] financialTransactions p1: ' + items5.length + ' itens | totalCount=' + d5.totalCount);
+        if (items5.length > 0) console.log('[Asaas] financialTx[0] sample:', JSON.stringify(items5[0]));
+      }
       for (const t of items5) {
         const v = parseFloat(t.value ?? 0);
         if (!v || !t.date) continue;
         movsList.push({
           date: t.date,
           valor: Math.abs(v),
-          tipo: t.type === 'CREDIT' ? 'entrada' : 'saida',
+          tipo: v > 0 ? 'entrada' : 'saida',
           desc: t.description || t.transactionType || '—',
         });
       }
