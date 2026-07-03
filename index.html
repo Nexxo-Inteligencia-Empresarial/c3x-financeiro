@@ -2808,8 +2808,8 @@ function renderOpex() {
   const realMarg = recTot.real - cusTot.real;
   const orcRes   = orcMarg  - despTot.orc;
   const realRes  = realMarg - despTot.real;
-  const orcTotalDesp  = cusTot.orc  + despTot.orc  + invTot.orc;
-  const realTotalDesp = cusTot.real + despTot.real + invTot.real;
+  const orcTotalDesp  = cusTot.orc  + despTot.orc;
+  const realTotalDesp = cusTot.real + despTot.real;
 
   // KPI cards
   document.getElementById('opex-rec-real').textContent  = fmtK(recTot.real);
