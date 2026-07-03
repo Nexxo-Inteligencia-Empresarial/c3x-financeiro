@@ -2203,6 +2203,9 @@ function fluxoGerarSemanas(from, to) {
   return semanas;
 }
 
+// Contas bancárias do Nibo ignoradas no Fluxo de Caixa (não são a conta Asaas operacional)
+const FLUXO_CONTAS_IGNORADAS = /azul.?visa\s*infinity|^bla$|cora/i;
+
 function fluxoAgregarDados(semanas, cc) {
   const [from, to] = periodoMeses();
   const toDay  = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -2222,8 +2225,18 @@ function fluxoAgregarDados(semanas, cc) {
     return lista.map(c => c.costCenterDescription || c.description || c.name || '').filter(Boolean);
   };
 
+  // Retorna nome da conta bancária do item (tenta os campos mais comuns da API Nibo)
+  const contaDeItem = item => item.bank?.name || item.bankAccount?.name || item.bankAccountName || '';
+
+  // Log diagnóstico apenas na primeira chamada para checar o campo correto
+  if (semanas.length > 0 && RAW_DEBITS.length > 0) {
+    const s = RAW_DEBITS[0];
+    console.log('[Fluxo conta] sample debit bank fields → bank:', s.bank, 'bankAccount:', s.bankAccount, 'bankAccountName:', s.bankAccountName);
+  }
+
   // Créditos
   for (const item of RAW_CREDITS) {
+    if (FLUXO_CONTAS_IGNORADAS.test(contaDeItem(item))) continue;
     if (ccFiltro && !ccDeItem(item).includes(ccFiltro)) continue;
     const ccLabel    = ccDeItem(item)[0] || 'Sem CC';
     const stake      = item.stakeholder?.name || '—';
@@ -2253,6 +2266,7 @@ function fluxoAgregarDados(semanas, cc) {
   // Débitos — mesma lógica da Visão Executiva (ehInvestimento exclui distribuições/equipamentos)
   for (const item of RAW_DEBITS) {
     const v = Math.abs(item.value || 0); if (!v) continue;
+    if (FLUXO_CONTAS_IGNORADAS.test(contaDeItem(item))) continue;
     if (ccFiltro && !ccDeItem(item).includes(ccFiltro)) continue;
     const ccLabel = ccDeItem(item)[0] || 'Sem CC';
     const stake   = item.stakeholder?.name || '—';
