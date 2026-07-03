@@ -911,9 +911,10 @@ const ASAAS_SALDO_ABERTURA = {
 // Chave = mês 1-based (1=Jan…12=Dez) = abertura daquele mês = fechamento verificado do mês anterior.
 // Necessário porque o Nibo (schedules/debit) não captura todas as saídas da conta Asaas.
 // Atualizar após confirmar cada fechamento mensal.
+// Âncoras mensais verificadas no extrato Asaas (abertura do mês = fechamento verificado do anterior).
+// Jan não precisa de âncora: o whitelist "Recebimentos Asaas" + ASAAS_SALDO_ABERTURA acumulam naturalmente.
 const SALDO_ABERTURA_MENSAL = {
   2026: {
-    1: 16912.20,  // Jan: back-calculado para fechar em R$42.497,32 (net Nibo Jan = R$25.585,12)
     2: 42497.32,  // Fev: fechamento verificado de Jan/2026
     3: 43306.92,  // Mar: fechamento verificado de Fev/2026
   }
@@ -2203,8 +2204,8 @@ function fluxoGerarSemanas(from, to) {
   return semanas;
 }
 
-// Contas bancárias do Nibo ignoradas no Fluxo de Caixa (não são a conta Asaas operacional)
-const FLUXO_CONTAS_IGNORADAS = /azul.?visa\s*infinity|^bla$|cora/i;
+// Somente lançamentos da conta operacional Asaas entram no Fluxo de Caixa (whitelist)
+const FLUXO_CONTA_ASAAS = /recebimentos\s*asaas/i;
 
 function fluxoAgregarDados(semanas, cc) {
   const [from, to] = periodoMeses();
@@ -2228,15 +2229,21 @@ function fluxoAgregarDados(semanas, cc) {
   // Retorna nome da conta bancária do item (tenta os campos mais comuns da API Nibo)
   const contaDeItem = item => item.bank?.name || item.bankAccount?.name || item.bankAccountName || '';
 
-  // Log diagnóstico apenas na primeira chamada para checar o campo correto
-  if (semanas.length > 0 && RAW_DEBITS.length > 0) {
-    const s = RAW_DEBITS[0];
-    console.log('[Fluxo conta] sample debit bank fields → bank:', s.bank, 'bankAccount:', s.bankAccount, 'bankAccountName:', s.bankAccountName);
+  // Whitelist: só itens da conta "Recebimentos Asaas" (ou sem banco atribuído, por segurança)
+  const ehContaAsaas = item => { const c = contaDeItem(item); return !c || FLUXO_CONTA_ASAAS.test(c); };
+
+  // Log diagnóstico: mostra campo banco e quantos itens cada conta tem
+  if (RAW_DEBITS.length > 0) {
+    const s0 = RAW_DEBITS[0];
+    console.log('[Fluxo conta] campo banco → bank:', s0.bank, '| bankAccount:', s0.bankAccount, '| bankAccountName:', s0.bankAccountName);
+    const porConta = {};
+    for (const i of RAW_DEBITS) { const c = contaDeItem(i)||'(sem banco)'; porConta[c]=(porConta[c]||0)+1; }
+    console.log('[Fluxo conta] débitos por conta:', JSON.stringify(porConta));
   }
 
-  // Créditos
+  // Créditos — somente conta Asaas
   for (const item of RAW_CREDITS) {
-    if (FLUXO_CONTAS_IGNORADAS.test(contaDeItem(item))) continue;
+    if (!ehContaAsaas(item)) continue;
     if (ccFiltro && !ccDeItem(item).includes(ccFiltro)) continue;
     const ccLabel    = ccDeItem(item)[0] || 'Sem CC';
     const stake      = item.stakeholder?.name || '—';
@@ -2263,10 +2270,10 @@ function fluxoAgregarDados(semanas, cc) {
     }
   }
 
-  // Débitos — mesma lógica da Visão Executiva (ehInvestimento exclui distribuições/equipamentos)
+  // Débitos — somente conta Asaas
   for (const item of RAW_DEBITS) {
     const v = Math.abs(item.value || 0); if (!v) continue;
-    if (FLUXO_CONTAS_IGNORADAS.test(contaDeItem(item))) continue;
+    if (!ehContaAsaas(item)) continue;
     if (ccFiltro && !ccDeItem(item).includes(ccFiltro)) continue;
     const ccLabel = ccDeItem(item)[0] || 'Sem CC';
     const stake   = item.stakeholder?.name || '—';
@@ -2292,18 +2299,12 @@ function fluxoAgregarDados(semanas, cc) {
   }
 
   // Taxas Asaas (value − netValue) — só visão geral
-  if (!ccFiltro) {
-    for (const taxa of ASAAS_TAXAS_LIST) {
-      const d = new Date(taxa.date); const s = findSem(d); if (!s) continue;
-      s.saidas_real += taxa.valor;
-      s.lancamentos.push({ tipo: 'saida_real', data: toDay(d), desc: 'Taxa Asaas', valor: taxa.valor, stakeholder: 'Asaas', cc: 'Sem CC' });
-    }
-  }
+  // Taxas Asaas já estão nos débitos Nibo (Despesas com cobrança / Recebimentos Asaas) — não adicionar de novo
 
   const _dbgEntR = semanas.reduce((s,w)=>s+w.entradas_real,0);
   const _dbgSaiR = semanas.reduce((s,w)=>s+w.saidas_real,0);
-  const _dbgPagos = RAW_DEBITS.filter(i=>i.isPaid===true||(i.isPaid==null&&Math.abs(i.openValue||0)===0&&Math.abs(i.value||0)>0)).length;
-  console.log(`[Fluxo] fonte=Nibo | RAW_DEBITS=${RAW_DEBITS.length} pagos=${_dbgPagos} | entradas_real=${_dbgEntR.toFixed(2)} saidas_real=${_dbgSaiR.toFixed(2)}`);
+  const _dbgPagos = RAW_DEBITS.filter(i=>ehContaAsaas(i)&&(i.isPaid===true||(i.isPaid==null&&Math.abs(i.openValue||0)===0&&Math.abs(i.value||0)>0))).length;
+  console.log(`[Fluxo] conta=Asaas | débitos_asaas=${_dbgPagos} | entradas_real=${_dbgEntR.toFixed(2)} saidas_real=${_dbgSaiR.toFixed(2)}`);
 
   for (const s of semanas) s.lancamentos.sort((a, b) => a.data - b.data);
 
@@ -2313,12 +2314,13 @@ function fluxoAgregarDados(semanas, cc) {
   console.log(`[Fluxo] abertura mês ${from+1}/${ANO_FILTRO}: R$${acum.toFixed(2)} (${_ancoraMes != null ? 'âncora SALDO_ABERTURA_MENSAL' : 'Asaas saldo_abertura'})`);
 
   if (_ancoraMes == null && semanas.length > 0) {
-    // Sem âncora: acumula Nibo do 01/Jan até o início do período para meses posteriores
+    // Sem âncora: acumula do 01/Jan até o início do período — somente conta Asaas
     const periodoInicio = semanas[0].start;
     const jan1 = new Date(ANO_FILTRO, 0, 1);
     if (periodoInicio > jan1) {
       const _tD = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
       for (const item of RAW_CREDITS) {
+        if (!ehContaAsaas(item)) continue;
         const ok = item.isPaid===true || item.isEntry===true; if (!ok) continue;
         const vr = Math.abs(item.value||0); if (!vr) continue;
         const ds = _dataCaixa(item); if (!ds) continue;
@@ -2326,18 +2328,13 @@ function fluxoAgregarDados(semanas, cc) {
         if (dt.getFullYear()===ANO_FILTRO && dt >= jan1 && dt < periodoInicio) acum += vr;
       }
       for (const item of RAW_DEBITS) {
+        if (!ehContaAsaas(item)) continue;
         const ok = item.isPaid===true || (item.isPaid==null && Math.abs(item.openValue||0)===0 && Math.abs(item.value||0)>0);
         if (!ok) continue;
         const ds = item.isPaid===true ? (item.paymentDate||item.dueDate||item.scheduleDate) : (item.dueDate||item.scheduleDate);
         if (!ds) continue;
         const dt = _tD(new Date(ds));
         if (dt.getFullYear()===ANO_FILTRO && dt >= jan1 && dt < periodoInicio) acum -= Math.abs(item.value||0);
-      }
-      if (!ccFiltro) {
-        for (const taxa of ASAAS_TAXAS_LIST) {
-          const dt = _tD(new Date(taxa.date));
-          if (dt.getFullYear()===ANO_FILTRO && dt >= jan1 && dt < periodoInicio) acum -= taxa.valor;
-        }
       }
     }
   }
