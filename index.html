@@ -2234,12 +2234,6 @@ function fluxoAgregarDados(semanas, cc) {
   // Whitelist: só itens da conta "Recebimentos Asaas" (ou sem banco atribuído, por segurança)
   const ehContaAsaas = item => { const c = contaDeItem(item); return !c || FLUXO_CONTA_ASAAS.test(c); };
 
-  // Log diagnóstico: mostra todos os campos disponíveis no item Nibo
-  if (RAW_DEBITS.length > 0) {
-    const s0 = RAW_DEBITS[0];
-    console.log('[Fluxo item keys]', Object.keys(s0).join(', '));
-    console.log('[Fluxo item sample]', JSON.stringify(s0).slice(0, 600));
-  }
 
   // Créditos — somente conta Asaas
   for (const item of RAW_CREDITS) {
@@ -2343,6 +2337,23 @@ function fluxoAgregarDados(semanas, cc) {
     acum += s.entradas_real - s.saidas_real;
     s.saldo_acum = acum;
   }
+
+  // Âncoras de fechamento: no final de cada mês com valor verificado, corrigir saldo_acum
+  // e propagar a diferença para todas as semanas seguintes (corrige discrepância Nibo vs Asaas)
+  const ancorasAno = SALDO_ABERTURA_MENSAL[ANO_FILTRO] || {};
+  for (let i = 0; i < semanas.length; i++) {
+    const s = semanas[i];
+    const mesAtual = s.start.getMonth(); // 0-based
+    const isUltimaSemana = i === semanas.length - 1 ||
+      semanas[i + 1].start.getMonth() !== mesAtual ||
+      semanas[i + 1].start.getFullYear() !== s.start.getFullYear();
+    if (!isUltimaSemana) continue;
+    const ancoraFecho = ancorasAno[mesAtual + 2]; // abertura do mês seguinte = fechamento verificado
+    if (ancoraFecho == null || Math.abs(s.saldo_acum - ancoraFecho) < 0.01) continue;
+    const delta = ancoraFecho - s.saldo_acum;
+    for (let j = i; j < semanas.length; j++) semanas[j].saldo_acum += delta;
+  }
+
   return semanas;
 }
 
