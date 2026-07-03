@@ -2282,26 +2282,42 @@ function fluxoAgregarDados(semanas, cc) {
   const usarAsaas = !ccFiltro && ASAAS_MOVIMENTOS_LIST.length > 0;
 
   if (usarAsaas) {
-    // Realizados: itens Nibo conciliados (isPaid=true)
-    // Fonte: schedules/credit e schedules/debit — reflete exatamente o que Eduardo aceitou
-    // na conciliação OFX do Nibo (itens descartados não aparecem aqui)
+    // Realizados: itens Nibo conciliados
+    // Considera pago: isPaid=true, isEntry=true, ou openValue===0 (quitado sem flag boolean)
+    // Fonte: schedules/credit e schedules/debit — itens descartados na OFX não aparecem aqui
+    const _isPaidC = it => it.isPaid === true || it.isEntry === true || (it.openValue === 0 && Math.abs(it.value||0) > 0);
+    const _isPaidD = it => it.isPaid === true || (it.openValue === 0 && Math.abs(it.value||0) > 0);
+
+    let _dc=0,_dv=0,_dd=0,_ds=0,_di=0;
+    const _nosemEx=[];
     for (const item of RAW_CREDITS) {
-      if (!(item.isPaid === true || item.isEntry === true)) continue;
-      const vReal = Math.abs(item.value || 0); if (!vReal) continue;
-      const dStr = _dataCaixa(item); if (!dStr) continue;
-      const d = parseLocal(dStr); const s = findSem(d); if (!s) continue;
+      if (!_isPaidC(item)) { _dc++; continue; }
+      const vReal = Math.abs(item.value || 0); if (!vReal) { _dv++; continue; }
+      const dStr = _dataCaixa(item); if (!dStr) { _dd++; continue; }
+      const d = parseLocal(dStr); const s = findSem(d);
+      if (!s) {
+        _ds++;
+        if (_nosemEx.length < 3) _nosemEx.push({ isPaid: item.isPaid, openValue: item.openValue, value: item.value, dStr });
+        continue;
+      }
+      _di++;
       s.entradas_real += vReal;
       s.lancamentos.push({ tipo: 'entrada_real', data: toDay(d), desc: item.description||'—', valor: vReal, stakeholder: item.stakeholder?.name||'—', cc: ccDeItem(item)[0]||'Sem CC' });
     }
+    console.log(`[Fluxo diag E] total=${RAW_CREDITS.length} notPaid=${_dc} noVal=${_dv} noDate=${_dd} noSem=${_ds} ok=${_di} | from=${from} to=${to} inicio=${inicio.toISOString().slice(0,10)} fim=${fim.toISOString().slice(0,10)}`);
+    if (_nosemEx.length) console.log('[Fluxo noSem ex]', JSON.stringify(_nosemEx));
+
+    let _dd2=0,_dv2=0,_dd2d=0,_ds2=0,_di2=0;
     for (const item of RAW_DEBITS) {
-      const isPaidD = item.isPaid === true || (item.isPaid == null && Math.abs(item.openValue||0) === 0 && Math.abs(item.value||0) > 0);
-      if (!isPaidD) continue;
-      const vReal = Math.abs(item.value || 0); if (!vReal) continue;
-      const dStr = item.paymentDate || item.dueDate || item.scheduleDate; if (!dStr) continue;
-      const d = parseLocal(dStr); const s = findSem(d); if (!s) continue;
+      if (!_isPaidD(item)) { _dd2++; continue; }
+      const vReal = Math.abs(item.value || 0); if (!vReal) { _dv2++; continue; }
+      const dStr = item.paymentDate || item.dueDate || item.scheduleDate; if (!dStr) { _dd2d++; continue; }
+      const d = parseLocal(dStr); const s = findSem(d); if (!s) { _ds2++; continue; }
+      _di2++;
       s.saidas_real += vReal;
       s.lancamentos.push({ tipo: 'saida_real', data: toDay(d), desc: item.description||'—', valor: vReal, stakeholder: item.stakeholder?.name||'—', cc: ccDeItem(item)[0]||'Sem CC', investimento: false });
     }
+    console.log(`[Fluxo diag S] total=${RAW_DEBITS.length} notPaid=${_dd2} noVal=${_dv2} noDate=${_dd2d} noSem=${_ds2} ok=${_di2}`);
 
     // Provisionados: itens Nibo ainda não pagos
     // openValue pode ser null para itens que nunca tiveram pagamento parcial → usa value como fallback
