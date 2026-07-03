@@ -2782,18 +2782,11 @@ function renderOpex() {
   const recCats = ORC_GERAL_SECOES.find(s => s.id === 'rec')?.cats || [];
   const recTot  = sumCats(recCats, 'rec');
 
-  // Deduções
-  const dedCats = ORC_GERAL_SECOES.find(s => s.id === 'ded')?.cats || [];
-  const dedTot  = sumCats(dedCats, 'desp');
+  // Custos: usa DRE_CUSTOS_SUBGROUPS
+  const cusTot = sumCats(DRE_CUSTOS_SUBGROUPS.flatMap(sg => sg.cats), 'desp');
 
-  // Custos: usa DRE_CUSTOS_SUBGROUPS (inclui cats de cus + desp que são custos no Nibo)
-  const custosCats = DRE_CUSTOS_SUBGROUPS.flatMap(sg => sg.cats);
-  const cusTot     = sumCats(custosCats, 'desp');
-
-  // Despesas: cats de desp que NÃO estão em CUSTOS (evita dupla contagem)
-  const despSec  = ORC_GERAL_SECOES.find(s => s.id === 'desp') || { cats: [] };
-  const despCats = despSec.cats.filter(c => !DRE_CUSTOS_CATS.has(c));
-  const despTot  = sumCats(despCats, 'desp');
+  // Despesas: usa DRE_DESPESAS_SUBGROUPS (inclui comissões no subgrupo Comercial)
+  const despTot = sumCats(DRE_DESPESAS_SUBGROUPS.flatMap(sg => sg.cats), 'desp');
 
   // Investimentos
   const invCats = ORC_GERAL_SECOES.find(s => s.id === 'inv')?.cats || [];
@@ -2803,15 +2796,13 @@ function renderOpex() {
   const orcBase  = recTot.orc  || 1;
   const realBase = recTot.real || 1;
 
-  // Calculated lines
-  const orcLiq   = recTot.orc  - dedTot.orc;
-  const realLiq  = recTot.real - dedTot.real;
-  const orcMarg  = orcLiq  - cusTot.orc;
-  const realMarg = realLiq - cusTot.real;
+  // Calculated lines: MARGEM = RECEITA − CUSTOS; RESULTADO = MARGEM − DESPESAS − INV
+  const orcMarg  = recTot.orc  - cusTot.orc;
+  const realMarg = recTot.real - cusTot.real;
   const orcRes   = orcMarg  - despTot.orc  - invTot.orc;
   const realRes  = realMarg - despTot.real - invTot.real;
-  const orcTotalDesp  = dedTot.orc  + cusTot.orc  + despTot.orc  + invTot.orc;
-  const realTotalDesp = dedTot.real + cusTot.real + despTot.real + invTot.real;
+  const orcTotalDesp  = cusTot.orc  + despTot.orc  + invTot.orc;
+  const realTotalDesp = cusTot.real + despTot.real + invTot.real;
 
   // KPI cards
   document.getElementById('opex-rec-real').textContent  = fmtK(recTot.real);
@@ -2927,19 +2918,10 @@ function renderOpex() {
   // --- Assemble DRE ---
   let html = '';
 
-  // RECEITA OPERACIONAL — total inline no cabeçalho
+  // RECEITA OPERACIONAL
   html += sectionHeaderRow('RECEITA OPERACIONAL', recTot.orc, recTot.real);
 
-  // DEDUÇÕES DA RECEITA
-  html += sectionHeaderRow('DEDUÇÕES DA RECEITA');
-  for (const cat of dedCats) {
-    const orc = sp(cat), real = sc(cat);
-    html += catRow(cat, orc, real, 'desp');
-  }
-  html += subtotalRow('▸ Total Deduções', dedTot.orc, dedTot.real, 'desp');
-  html += calcRow('RECEITA LÍQUIDA', orcLiq, realLiq, 'var(--blue-bg)');
-
-  // CUSTOS OPERACIONAIS — cabeçalho com total inline + subgrupos
+  // CUSTOS OPERACIONAIS
   html += sectionHeaderRow('CUSTOS OPERACIONAIS', cusTot.orc, cusTot.real);
   for (const sg of DRE_CUSTOS_SUBGROUPS) {
     const sgTot = sumCats(sg.cats, 'desp');
@@ -2952,16 +2934,18 @@ function renderOpex() {
   }
   html += calcRow('MARGEM DE CONTRIBUIÇÃO', orcMarg, realMarg, 'var(--blue-bg)');
 
-  // DESPESAS OPERACIONAIS — cabeçalho com total inline
-  if (despCats.length > 0) {
-    html += sectionHeaderRow('DESPESAS OPERACIONAIS', despTot.orc, despTot.real);
-    for (const cat of despCats) {
+  // DESPESAS OPERACIONAIS — com subgrupos
+  html += sectionHeaderRow('DESPESAS OPERACIONAIS', despTot.orc, despTot.real);
+  for (const sg of DRE_DESPESAS_SUBGROUPS) {
+    const sgTot = sumCats(sg.cats, 'desp');
+    html += subgroupHeaderRow(sg.label, sgTot.orc, sgTot.real);
+    for (const cat of sg.cats) {
       const orc = sp(cat), real = sc(cat);
-      html += catRow(cat, orc, real, 'desp');
+      html += catRow(cat, orc, real, 'desp', 32);
     }
   }
 
-  // INVESTIMENTOS — cabeçalho com total inline
+  // INVESTIMENTOS
   html += sectionHeaderRow('INVESTIMENTOS', invTot.orc, invTot.real);
   for (const cat of invCats) {
     const orc = sp(cat), real = sc(cat);
@@ -3897,6 +3881,28 @@ const DRE_CUSTOS_SUBGROUPS = [
   ]},
 ];
 const DRE_CUSTOS_CATS = new Set(DRE_CUSTOS_SUBGROUPS.flatMap(sg => sg.cats));
+
+/* Subgrupos de DESPESAS OPERACIONAIS para o DRE Orçamento */
+const DRE_DESPESAS_SUBGROUPS = [
+  { label: 'Comercial', cats: [
+    'Dedução da Receita - Comissão (Escola de Sócios)',
+    'Dedução da Receita - Comissão (Prime)',
+    'Dedução da Receita - Comissão (Destrava)',
+  ]},
+  { label: 'Marketing', cats: [
+    'Marketing',
+  ]},
+  { label: 'Despesa Financeira', cats: [
+    'Tarifa bancária',
+    'Despesas com cobrança',
+    'Despesas com cobrança - Cartão',
+  ]},
+  { label: 'Despesas Administrativas', cats: [
+    'Material de escritório',
+    'Despesa com Alimentação',
+    'Material de limpeza e expediente',
+  ]},
+];
 
 function carregarOrcGeral() {
   const s = localStorage.getItem('c3x_orc_geral_v1');
