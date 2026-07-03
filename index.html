@@ -1305,6 +1305,7 @@ async function carregarAsaasSaldos(asaasToken) {
           id: t.id || '',
           valor: Math.abs(v),
           tipo: v > 0 ? 'entrada' : 'saida',
+          txType: t.type || '',
           desc: t.description || t.transactionType || '—',
           balance: parseFloat(t.balance ?? 0),
         });
@@ -2289,17 +2290,31 @@ function fluxoAgregarDados(semanas, cc) {
       return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
     });
 
-    // Realizados: bucketeia por semana e registra entradas/saídas
+    // Realizados: bucketeia por semana e registra entradas/saídas.
+    // TRANSFER credits = transferência recebida de outra conta (capital, não receita de clientes) → excluído das entradas.
+    // O campo balance de cada tx já inclui essas transferências — saldo_acum continua correto.
+    const transferenciasExcluidas = [];
     for (const mov of movOrdenados) {
       const d = parseLocal(mov.date); const s = findSem(d);
       if (!s) continue;
       if (mov.tipo === 'entrada') {
+        if (mov.txType === 'TRANSFER') {
+          transferenciasExcluidas.push(mov);
+          continue;
+        }
         s.entradas_real += mov.valor;
         s.lancamentos.push({ tipo: 'entrada_real', data: toDay(d), desc: mov.desc, valor: mov.valor, stakeholder: '—', cc: '—' });
       } else {
         s.saidas_real += mov.valor;
         s.lancamentos.push({ tipo: 'saida_real', data: toDay(d), desc: mov.desc, valor: mov.valor, stakeholder: '—', cc: '—', investimento: false });
       }
+    }
+    if (transferenciasExcluidas.length) {
+      const totalExcl = transferenciasExcluidas.reduce((s,m)=>s+m.valor,0);
+      console.log(`[Fluxo] TRANSFER credits excluídos das entradas: ${transferenciasExcluidas.length} txs, total R$${totalExcl.toFixed(2)}`);
+      const byDesc = {};
+      transferenciasExcluidas.forEach(m => { const k = `${m.date} | ${m.desc}`; byDesc[k] = (byDesc[k]||0)+m.valor; });
+      console.table(byDesc);
     }
 
     // Provisionados: itens Nibo ainda não pagos (previsão futura, sem filtro de banco)
@@ -2325,6 +2340,14 @@ function fluxoAgregarDados(semanas, cc) {
     const _dbgE = semanas.reduce((s,w)=>s+w.entradas_real,0);
     const _dbgS = semanas.reduce((s,w)=>s+w.saidas_real,0);
     console.log(`[Fluxo] modo=Asaas | movimentos=${movOrdenados.length} | entradas_real=${_dbgE.toFixed(2)} saidas_real=${_dbgS.toFixed(2)}`);
+    // Log por mês para diagnóstico
+    const _porMes = {};
+    for (const w of semanas) {
+      const mk = `${w.start.getFullYear()}-${String(w.start.getMonth()+1).padStart(2,'0')}`;
+      if (!_porMes[mk]) _porMes[mk] = { E: 0, S: 0 };
+      _porMes[mk].E += w.entradas_real; _porMes[mk].S += w.saidas_real;
+    }
+    console.log('[Fluxo] entradas/saídas por mês:', JSON.stringify(Object.fromEntries(Object.entries(_porMes).map(([k,v])=>[k,{E:+v.E.toFixed(2),S:+v.S.toFixed(2)}]))));
 
     for (const s of semanas) s.lancamentos.sort((a, b) => a.data - b.data);
 
