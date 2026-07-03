@@ -902,9 +902,21 @@ let ASAAS_TAXAS_LIST = [];         // [{date, valor}] taxas Asaas (value − net
 let ASAAS_ENTRADAS_LIST = [];      // [{date, valor, desc, stakeholder}] recebimentos realizados (netValue)
 let ASAAS_SAIDAS_LIST = [];        // [{date, valor, desc, stakeholder, tipo}] bill-payment + transfers
 
-// Saldo verificado em 01/Jan de cada ano no extrato Asaas (fonte de verdade para abertura do fluxo)
+// Saldo Asaas verificado em 01/Jan de cada ano (para KPI)
 const ASAAS_SALDO_ABERTURA = {
   2026: 24427.12,
+};
+
+// Âncoras mensais verificados no extrato Asaas.
+// Chave = mês 1-based (1=Jan…12=Dez) = abertura daquele mês = fechamento verificado do mês anterior.
+// Necessário porque o Nibo (schedules/debit) não captura todas as saídas da conta Asaas.
+// Atualizar após confirmar cada fechamento mensal.
+const SALDO_ABERTURA_MENSAL = {
+  2026: {
+    1: 16912.20,  // Jan: back-calculado para fechar em R$42.497,32 (net Nibo Jan = R$25.585,12)
+    2: 42497.32,  // Fev: fechamento verificado de Jan/2026
+    3: 43306.92,  // Mar: fechamento verificado de Fev/2026
+  }
 };
 
 // Regime de caixa: data de recebimento.
@@ -2238,13 +2250,14 @@ function fluxoAgregarDados(semanas, cc) {
     }
   }
 
-  // Débitos
+  // Débitos — mesma lógica da Visão Executiva (ehInvestimento exclui distribuições/equipamentos)
   for (const item of RAW_DEBITS) {
     const v = Math.abs(item.value || 0); if (!v) continue;
     if (ccFiltro && !ccDeItem(item).includes(ccFiltro)) continue;
     const ccLabel = ccDeItem(item)[0] || 'Sem CC';
     const stake   = item.stakeholder?.name || '—';
     const desc    = item.description || '—';
+    const cat     = item.categories?.[0]?.categoryName || item.categoryName || '';
     const pago    = item.isPaid === true || (item.isPaid == null && Math.abs(item.openValue||0) === 0 && v > 0);
 
     if (pago) {
@@ -2254,7 +2267,7 @@ function fluxoAgregarDados(semanas, cc) {
       if (!dStr) continue;
       const d = new Date(dStr); const s = findSem(d); if (!s) continue;
       s.saidas_real += v;
-      s.lancamentos.push({ tipo: 'saida_real', data: toDay(d), desc, valor: v, stakeholder: stake, cc: ccLabel });
+      s.lancamentos.push({ tipo: 'saida_real', data: toDay(d), desc, valor: v, stakeholder: stake, cc: ccLabel, investimento: ehInvestimento(cat) });
     } else {
       const dStr = item.dueDate || item.scheduleDate; if (!dStr) continue;
       const d = new Date(dStr); const s = findSem(d); if (!s) continue;
@@ -2280,10 +2293,13 @@ function fluxoAgregarDados(semanas, cc) {
 
   for (const s of semanas) s.lancamentos.sort((a, b) => a.data - b.data);
 
-  // Saldo acumulado: parte do saldo Asaas verificado em 01/Jan e acumula via Nibo
-  let acum = ASAAS_SALDO_ABERTURA[ANO_FILTRO] ?? 0;
+  // Saldo acumulado: usa âncora mensal verificada quando disponível, senão Asaas 01/Jan + Nibo acumulado
+  const _ancoraMes = (SALDO_ABERTURA_MENSAL[ANO_FILTRO] || {})[from + 1];
+  let acum = _ancoraMes != null ? _ancoraMes : (ASAAS_SALDO_ABERTURA[ANO_FILTRO] ?? 0);
+  console.log(`[Fluxo] abertura mês ${from+1}/${ANO_FILTRO}: R$${acum.toFixed(2)} (${_ancoraMes != null ? 'âncora SALDO_ABERTURA_MENSAL' : 'Asaas saldo_abertura'})`);
 
-  if (semanas.length > 0) {
+  if (_ancoraMes == null && semanas.length > 0) {
+    // Sem âncora: acumula Nibo do 01/Jan até o início do período para meses posteriores
     const periodoInicio = semanas[0].start;
     const jan1 = new Date(ANO_FILTRO, 0, 1);
     if (periodoInicio > jan1) {
@@ -2485,7 +2501,7 @@ function renderFluxo() {
     <div class="kpi-card">
       <div class="kpi-label">Saldo Conta Asaas</div>
       <div class="kpi-value" style="color:${SALDO_ASAAS_ATUAL!==null?(SALDO_ASAAS_ATUAL>=0?'var(--blue)':'var(--red)'):'var(--blue)'}">${SALDO_ASAAS_ATUAL!==null?fmtK(SALDO_ASAAS_ATUAL):fmtK(SALDO_INICIAL_2026)}</div>
-      <div class="kpi-proj">Abertura Jan/${ANO_FILTRO}: <strong>${fmtK(SALDO_INICIAL_2026)}</strong></div>
+      <div class="kpi-proj">Abertura Jan/${ANO_FILTRO}: <strong>${fmtK(ASAAS_SALDO_ABERTURA[ANO_FILTRO] ?? 0)}</strong></div>
       <div class="kpi-delta pos">Recebimentos Asaas</div>
     </div>
   `;
