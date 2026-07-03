@@ -2795,8 +2795,8 @@ function renderOpex() {
   // Despesas: usa DRE_DESPESAS_SUBGROUPS (inclui comissões no subgrupo Comercial)
   const despTot = sumCats(DRE_DESPESAS_SUBGROUPS.flatMap(sg => sg.cats), 'desp');
 
-  // Investimentos
-  const invCats = ORC_GERAL_SECOES.find(s => s.id === 'inv')?.cats || [];
+  // Investimentos — usa DRE_INV_CATS com nomes exatos do Nibo
+  const invCats = DRE_INV_CATS;
   const invTot  = sumCats(invCats, 'desp');
 
   // Denominators
@@ -3892,9 +3892,11 @@ const DRE_CUSTOS_SUBGROUPS = [
   { label: 'Eventos', cats: [
     'Almoço / Jantar / Coffe Break',
     'Brinde - Eventos',
-    'Gráfica',
+    'Grafica',
     'Trafego Pago',
     'Transporte / Uber / Gasolina',
+    'Bebidas',
+    'Material para Dinâmica ',
   ]},
 ];
 const DRE_CUSTOS_CATS = new Set(DRE_CUSTOS_SUBGROUPS.flatMap(sg => sg.cats));
@@ -3905,6 +3907,8 @@ const DRE_DESPESAS_SUBGROUPS = [
     'Dedução da Receita - Comissão (Escola de Sócios)',
     'Dedução da Receita - Comissão (Prime)',
     'Dedução da Receita - Comissão (Destrava)',
+    'Dedução da Receita - Comissão (C3X)',
+    'Dedução da Receita (reembolso)',
   ]},
   { label: 'Marketing', cats: [
     'Marketing',
@@ -3912,7 +3916,7 @@ const DRE_DESPESAS_SUBGROUPS = [
   { label: 'Despesa Financeira', cats: [
     'Tarifa bancária',
     'Despesas com cobrança',
-    'Despesas com cobrança - Cartão',
+    'Despesas com cobrança - Cartão de crédito',
   ]},
   { label: 'Despesas Administrativas', cats: [
     'Material de escritório',
@@ -3920,6 +3924,9 @@ const DRE_DESPESAS_SUBGROUPS = [
     'Material de limpeza e expediente',
   ]},
 ];
+
+/* Categorias de INVESTIMENTOS — nomes exatos do Nibo */
+const DRE_INV_CATS = ['Adiantamento de Lucros', 'Equipamentos / Utensílios Cozinha'];
 
 function carregarOrcGeral() {
   const s = localStorage.getItem('c3x_orc_geral_v1');
