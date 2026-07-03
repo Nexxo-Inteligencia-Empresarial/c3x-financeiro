@@ -912,9 +912,11 @@ const ASAAS_SALDO_ABERTURA = {
 // Necessário porque o Nibo (schedules/debit) não captura todas as saídas da conta Asaas.
 // Atualizar após confirmar cada fechamento mensal.
 // Âncoras mensais verificadas no extrato Asaas (abertura do mês = fechamento verificado do anterior).
-// Jan não precisa de âncora: o whitelist "Recebimentos Asaas" + ASAAS_SALDO_ABERTURA acumulam naturalmente.
+// Fórmula: âncora_mês = fechamento_verificado - net_Nibo_mês
+// Jan: net_Nibo = 39758.24 - 14111.43 = 25646.81 → âncora = 42497.32 - 25646.81 = 16850.51
 const SALDO_ABERTURA_MENSAL = {
   2026: {
+    1: 16850.51,  // Jan: âncora calculada para fechar em R$42.497,32
     2: 42497.32,  // Fev: fechamento verificado de Jan/2026
     3: 43306.92,  // Mar: fechamento verificado de Fev/2026
   }
@@ -2232,13 +2234,11 @@ function fluxoAgregarDados(semanas, cc) {
   // Whitelist: só itens da conta "Recebimentos Asaas" (ou sem banco atribuído, por segurança)
   const ehContaAsaas = item => { const c = contaDeItem(item); return !c || FLUXO_CONTA_ASAAS.test(c); };
 
-  // Log diagnóstico: mostra campo banco e quantos itens cada conta tem
+  // Log diagnóstico: mostra todos os campos disponíveis no item Nibo
   if (RAW_DEBITS.length > 0) {
     const s0 = RAW_DEBITS[0];
-    console.log('[Fluxo conta] campo banco → bank:', s0.bank, '| bankAccount:', s0.bankAccount, '| bankAccountName:', s0.bankAccountName);
-    const porConta = {};
-    for (const i of RAW_DEBITS) { const c = contaDeItem(i)||'(sem banco)'; porConta[c]=(porConta[c]||0)+1; }
-    console.log('[Fluxo conta] débitos por conta:', JSON.stringify(porConta));
+    console.log('[Fluxo item keys]', Object.keys(s0).join(', '));
+    console.log('[Fluxo item sample]', JSON.stringify(s0).slice(0, 600));
   }
 
   // Créditos — somente conta Asaas
