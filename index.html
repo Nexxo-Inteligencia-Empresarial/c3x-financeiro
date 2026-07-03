@@ -2273,6 +2273,11 @@ function fluxoAgregarDados(semanas, cc) {
     }
   }
 
+  const _dbgEntR = semanas.reduce((s,w)=>s+w.entradas_real,0);
+  const _dbgSaiR = semanas.reduce((s,w)=>s+w.saidas_real,0);
+  const _dbgPagos = RAW_DEBITS.filter(i=>i.isPaid===true||(i.isPaid==null&&Math.abs(i.openValue||0)===0&&Math.abs(i.value||0)>0)).length;
+  console.log(`[Fluxo] fonte=Nibo | RAW_DEBITS=${RAW_DEBITS.length} pagos=${_dbgPagos} | entradas_real=${_dbgEntR.toFixed(2)} saidas_real=${_dbgSaiR.toFixed(2)}`);
+
   for (const s of semanas) s.lancamentos.sort((a, b) => a.data - b.data);
 
   // Saldo acumulado: parte do saldo Asaas verificado em 01/Jan e acumula via Nibo
