@@ -2282,45 +2282,33 @@ function fluxoAgregarDados(semanas, cc) {
   const usarAsaas = !ccFiltro && ASAAS_MOVIMENTOS_LIST.length > 0;
 
   if (usarAsaas) {
-    // Ordena por data local ASC, depois por ID ASC (IDs Asaas são sequenciais — garante ordem
-    // correta intra-dia para o campo balance refletir o saldo após a última transação do dia)
-    const movOrdenados = [...ASAAS_MOVIMENTOS_LIST].sort((a, b) => {
-      const da = parseLocal(a.date), db = parseLocal(b.date);
-      if (da < db) return -1; if (da > db) return 1;
-      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-    });
-
-    // Realizados: bucketeia por semana e registra entradas/saídas.
-    // TRANSFER credits = transferência recebida de outra conta (capital, não receita de clientes) → excluído das entradas.
-    // O campo balance de cada tx já inclui essas transferências — saldo_acum continua correto.
-    const transferenciasExcluidas = [];
-    for (const mov of movOrdenados) {
-      const d = parseLocal(mov.date); const s = findSem(d);
-      if (!s) continue;
-      if (mov.tipo === 'entrada') {
-        if (mov.txType === 'TRANSFER') {
-          transferenciasExcluidas.push(mov);
-          continue;
-        }
-        s.entradas_real += mov.valor;
-        s.lancamentos.push({ tipo: 'entrada_real', data: toDay(d), desc: mov.desc, valor: mov.valor, stakeholder: '—', cc: '—' });
-      } else {
-        s.saidas_real += mov.valor;
-        s.lancamentos.push({ tipo: 'saida_real', data: toDay(d), desc: mov.desc, valor: mov.valor, stakeholder: '—', cc: '—', investimento: false });
-      }
+    // Realizados: itens Nibo conciliados (isPaid=true)
+    // Fonte: schedules/credit e schedules/debit — reflete exatamente o que Eduardo aceitou
+    // na conciliação OFX do Nibo (itens descartados não aparecem aqui)
+    for (const item of RAW_CREDITS) {
+      if (!(item.isPaid === true || item.isEntry === true)) continue;
+      const vReal = Math.abs(item.value || 0); if (!vReal) continue;
+      const dStr = _dataCaixa(item); if (!dStr) continue;
+      const d = parseLocal(dStr); const s = findSem(d); if (!s) continue;
+      s.entradas_real += vReal;
+      s.lancamentos.push({ tipo: 'entrada_real', data: toDay(d), desc: item.description||'—', valor: vReal, stakeholder: item.stakeholder?.name||'—', cc: ccDeItem(item)[0]||'Sem CC' });
     }
-    if (transferenciasExcluidas.length) {
-      const totalExcl = transferenciasExcluidas.reduce((s,m)=>s+m.valor,0);
-      console.log(`[Fluxo] TRANSFER credits excluídos das entradas: ${transferenciasExcluidas.length} txs, total R$${totalExcl.toFixed(2)}`);
-      const byDesc = {};
-      transferenciasExcluidas.forEach(m => { const k = `${m.date} | ${m.desc}`; byDesc[k] = (byDesc[k]||0)+m.valor; });
-      console.table(byDesc);
+    for (const item of RAW_DEBITS) {
+      const isPaidD = item.isPaid === true || (item.isPaid == null && Math.abs(item.openValue||0) === 0 && Math.abs(item.value||0) > 0);
+      if (!isPaidD) continue;
+      const vReal = Math.abs(item.value || 0); if (!vReal) continue;
+      const dStr = item.paymentDate || item.dueDate || item.scheduleDate; if (!dStr) continue;
+      const d = parseLocal(dStr); const s = findSem(d); if (!s) continue;
+      s.saidas_real += vReal;
+      s.lancamentos.push({ tipo: 'saida_real', data: toDay(d), desc: item.description||'—', valor: vReal, stakeholder: item.stakeholder?.name||'—', cc: ccDeItem(item)[0]||'Sem CC', investimento: false });
     }
 
-    // Provisionados: itens Nibo ainda não pagos (previsão futura, sem filtro de banco)
+    // Provisionados: itens Nibo ainda não pagos
+    // openValue pode ser null para itens que nunca tiveram pagamento parcial → usa value como fallback
     for (const item of RAW_CREDITS) {
       if (item.isPaid === true || item.isEntry === true) continue;
-      const vPrev = Math.abs(item.openValue || 0); if (!vPrev) continue;
+      const vPrev = (item.openValue != null && item.openValue > 0) ? Math.abs(item.openValue) : Math.abs(item.value || 0);
+      if (!vPrev) continue;
       const dStr = item.dueDate || item.scheduleDate; if (!dStr) continue;
       const d = parseLocal(dStr); const s = findSem(d); if (!s) continue;
       s.entradas_prev += vPrev;
@@ -2328,31 +2316,30 @@ function fluxoAgregarDados(semanas, cc) {
     }
     for (const item of RAW_DEBITS) {
       const v = Math.abs(item.value || 0); if (!v) continue;
-      const pago = item.isPaid===true||(item.isPaid==null&&Math.abs(item.openValue||0)===0&&v>0);
+      const pago = item.isPaid === true || (item.isPaid == null && Math.abs(item.openValue||0) === 0 && v > 0);
       if (pago) continue;
       const dStr = item.dueDate || item.scheduleDate; if (!dStr) continue;
       const d = parseLocal(dStr); const s = findSem(d); if (!s) continue;
-      const vPrev = Math.abs(item.openValue||0) > 0 ? Math.abs(item.openValue) : v;
+      const vPrev = (item.openValue != null && item.openValue > 0) ? Math.abs(item.openValue) : v;
       s.saidas_prev += vPrev;
       s.lancamentos.push({ tipo: 'saida_prev', data: toDay(d), desc: item.description||'—', valor: vPrev, stakeholder: item.stakeholder?.name||'—', cc: ccDeItem(item)[0]||'Sem CC' });
     }
 
-    const _dbgE = semanas.reduce((s,w)=>s+w.entradas_real,0);
-    const _dbgS = semanas.reduce((s,w)=>s+w.saidas_real,0);
-    console.log(`[Fluxo] modo=Asaas | movimentos=${movOrdenados.length} | entradas_real=${_dbgE.toFixed(2)} saidas_real=${_dbgS.toFixed(2)}`);
-    // Log por mês para diagnóstico
-    const _porMes = {};
-    for (const w of semanas) {
-      const mk = `${w.start.getFullYear()}-${String(w.start.getMonth()+1).padStart(2,'0')}`;
-      if (!_porMes[mk]) _porMes[mk] = { E: 0, S: 0 };
-      _porMes[mk].E += w.entradas_real; _porMes[mk].S += w.saidas_real;
-    }
-    console.log('[Fluxo] entradas/saídas por mês:', JSON.stringify(Object.fromEntries(Object.entries(_porMes).map(([k,v])=>[k,{E:+v.E.toFixed(2),S:+v.S.toFixed(2)}]))));
+    const _dbgE  = semanas.reduce((s,w)=>s+w.entradas_real,0);
+    const _dbgS  = semanas.reduce((s,w)=>s+w.saidas_real,0);
+    const _dbgEP = semanas.reduce((s,w)=>s+w.entradas_prev,0);
+    const _dbgSP = semanas.reduce((s,w)=>s+w.saidas_prev,0);
+    console.log(`[Fluxo] modo=Nibo-reconciliado | E=${_dbgE.toFixed(2)} S=${_dbgS.toFixed(2)} EP=${_dbgEP.toFixed(2)} SP=${_dbgSP.toFixed(2)}`);
 
     for (const s of semanas) s.lancamentos.sort((a, b) => a.data - b.data);
 
-    // Saldo: usa o campo balance da última transação de cada semana (saldo real Asaas após cada tx)
-    // Opening = balance da última tx antes do período (ou ASAAS_SALDO_ABERTURA se não houver)
+    // Saldo acumulado: campo balance da última transação Asaas de cada semana (extrato real da conta)
+    // Entradas/saídas vêm do Nibo mas o saldo vem do Asaas — fonte de verdade para o saldo da conta
+    const movOrdenados = [...ASAAS_MOVIMENTOS_LIST].sort((a, b) => {
+      const da = parseLocal(a.date), db = parseLocal(b.date);
+      if (da < db) return -1; if (da > db) return 1;
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    });
     let ultimoBalance = ASAAS_SALDO_ABERTURA[ANO_FILTRO] ?? 0;
     let preIdx = 0;
     while (preIdx < movOrdenados.length && parseLocal(movOrdenados[preIdx].date) < inicio) {
@@ -2360,7 +2347,6 @@ function fluxoAgregarDados(semanas, cc) {
       preIdx++;
     }
     console.log(`[Fluxo] abertura período ${from+1}/${ANO_FILTRO}: R$${ultimoBalance.toFixed(2)}`);
-
     let movIdx = preIdx;
     for (const s of semanas) {
       let balanceSemana = null;
