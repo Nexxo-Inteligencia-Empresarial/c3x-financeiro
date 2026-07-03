@@ -1082,12 +1082,13 @@ async function carregarCategoriasNibo() {
   }
 }
 
-// Busca pagamentos onde mês de pagamento ≠ mês de vencimento (cross-mês).
-// Retorna dvList [{dueDate, value, paymentDate}] para enriquecerAsaasMapFallback.
+// Busca todos os pagamentos RECEIVED desde 2 anos atrás para popular ASAAS_MAP.
+// Inclui pagamentos no mesmo mês (não só cross-mês) pois precisamos do paymentDate
+// para itens Nibo com dueDate em anos anteriores (2024/2025) pagos no ANO_FILTRO.
 async function carregarAsaasMap(asaasToken) {
   const LIMIT = 100;
   let offset = 0;
-  const prevYear = ANO_FILTRO - 1;
+  const startYear = ANO_FILTRO - 2;
   const hoje = new Date();
   const hojeFmt = String(ANO_FILTRO) + '-' +
     String(hoje.getMonth() + 1).padStart(2, '0') + '-' +
@@ -1098,7 +1099,7 @@ async function carregarAsaasMap(asaasToken) {
     const params = new URLSearchParams({
       endpoint: 'payments',
       status: 'RECEIVED',
-      'dueDate[ge]': `${prevYear}-01-01`,
+      'dueDate[ge]': `${startYear}-01-01`,
       'dueDate[le]': hojeFmt,
       limit: LIMIT,
       offset,
@@ -1113,8 +1114,6 @@ async function carregarAsaasMap(asaasToken) {
 
     for (const p of (data.data || [])) {
       if (!p.dueDate || !p.paymentDate || p.value == null) continue;
-      // Só entra se mês do pagamento ≠ mês do vencimento
-      if (String(p.dueDate).slice(0, 7) === String(p.paymentDate).slice(0, 7)) continue;
       dvList.push({
         dueDate:     String(p.dueDate).slice(0, 10),
         value:       parseFloat(p.value),
@@ -1127,7 +1126,7 @@ async function carregarAsaasMap(asaasToken) {
     if (offset > 9900) break;
   }
 
-  console.log('[Asaas] Cross-mês: ' + dvList.length + ' pagamentos para matching');
+  console.log('[Asaas] Payments para ASAAS_MAP: ' + dvList.length + ' itens (dueDate >= ' + startYear + ')');
   return dvList;
 }
 
@@ -2258,7 +2257,8 @@ const FLUXO_CONTA_ASAAS = /recebimentos\s*asaas/i;
 function fluxoAgregarDados(semanas, cc) {
   const [from, to] = periodoMeses();
   // parseLocal: converte 'YYYY-MM-DD' sem shift UTC (new Date('2026-01-31') em UTC-3 vira 30/Jan)
-  const parseLocal = s => { const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); };
+  // slice(0,10): Nibo retorna datas em ISO 8601 (ex: "2024-06-14T00:00:00Z") — só usa YYYY-MM-DD
+  const parseLocal = s => { const [y,m,d] = s.slice(0,10).split('-').map(Number); return new Date(y, m-1, d); };
   const toDay  = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
   const inicio = new Date(ANO_FILTRO, from, 1);
   const fim    = new Date(ANO_FILTRO, to + 1, 0);
