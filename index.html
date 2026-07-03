@@ -499,33 +499,45 @@ tr:hover td { background: #f9fafb; }
   <!-- PAGE: CATEGORIAS -->
   <div class="page" id="page-categorias">
     <div class="page-header">
-      <div class="page-badge">Despesas</div>
-      <h1 class="page-title">Categorias de Despesas</h1>
-      <p class="page-sub">Ranking de variação por categoria, atingimento da meta e detalhamento.</p>
+      <div class="page-badge">Opex</div>
+      <h1 class="page-title">Demonstrativo de Resultado</h1>
+      <p class="page-sub">Orçamento vs Realizado por categoria — percentuais calculados sobre a Receita Bruta.</p>
     </div>
     <div class="kpi-grid kpi-grid-3">
       <div class="kpi-card">
-        <div class="kpi-label">Despesa total projetada</div>
-        <div class="kpi-value" id="cat-proj-total">—</div>
+        <div class="kpi-label">Receita Bruta</div>
+        <div class="kpi-value" id="opex-rec-real">—</div>
+        <span class="kpi-tag realized">realizado</span>
+        <div class="kpi-proj" id="opex-rec-orc">Orçado: —</div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label">Despesa total realizada</div>
-        <div class="kpi-value" id="cat-real-total">—</div>
+        <div class="kpi-label">Despesas Totais</div>
+        <div class="kpi-value" id="opex-desp-real">—</div>
+        <span class="kpi-tag realized">realizado</span>
+        <div class="kpi-proj" id="opex-desp-orc">Orçado: —</div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label">Atingimento da meta de despesas</div>
-        <div class="kpi-value" id="cat-ating">—</div>
-        <div class="kpi-proj" style="font-size:11px;color:var(--text2);margin-top:4px">Abaixo de 100% indica economia.</div>
+        <div class="kpi-label">Resultado Operacional</div>
+        <div class="kpi-value" id="opex-res-real">—</div>
+        <span class="kpi-tag realized">realizado</span>
+        <div class="kpi-proj" id="opex-res-orc">Orçado: —</div>
       </div>
     </div>
     <div class="table-card">
       <div class="table-header">
-        <div class="table-title">Ranking completo de categorias</div>
-        <div class="table-sub" id="cat-base">Base: YTD</div>
+        <div class="table-title">DRE — Orçamento vs Realizado</div>
+        <div class="table-sub" id="opex-base">Base: YTD</div>
       </div>
       <table>
-        <thead><tr><th>Categoria</th><th>Projetado</th><th>Realizado</th><th>Variação</th><th>Status</th></tr></thead>
-        <tbody id="cat-table-body"></tbody>
+        <thead><tr>
+          <th>Categoria</th>
+          <th style="text-align:right">Orç R$</th>
+          <th style="text-align:right">Orç %</th>
+          <th style="text-align:right">Real R$</th>
+          <th style="text-align:right">Real %</th>
+          <th style="text-align:right">Δ%</th>
+        </tr></thead>
+        <tbody id="opex-table-body"></tbody>
       </table>
     </div>
   </div>
@@ -2662,7 +2674,7 @@ function renderTudo() {
   // Salvar estado atual do orçamento antes de re-renderizar (evita perda ao trocar período/mês)
   if (ORC_ABA === '__geral__') salvarOrcGeral(true); else salvarOrcamento(true);
   renderVisao();
-  renderCategorias();
+  renderOpex();
   renderMensal();
   renderProjecoes();
   renderServicos();
@@ -2755,40 +2767,153 @@ function renderVisao() {
   }
 }
 
-function renderCategorias() {
+function renderOpex() {
   const [from, to] = periodoMeses();
+  const plan = carregarOrcGeral();
 
-  // Combinar categorias projetadas + realizadas
-  const allCats = new Set([...Object.keys(PROJ_CAT), ...Object.keys(REAL.categorias)]);
-  const rows = [];
-  for (const cat of allCats) {
-    const proj = sumRange(PROJ_CAT[cat]||Array(12).fill(0), from, to);
-    const real = sumRange(REAL.categorias[cat]||Array(12).fill(0), from, to);
-    const vari = proj>0 ? (real-proj)/proj : (real>0?1:0);
-    rows.push({cat, proj, real, vari});
-  }
-  rows.sort((a,b)=>Math.abs(b.vari)-Math.abs(a.vari));
+  // Sum category array for period; source depends on section type
+  const sc = (cat) => sumRange(REAL.categorias[cat]    || Array(12).fill(0), from, to);
+  const sr = (cat) => sumRange(REAL.categoriasRec[cat] || Array(12).fill(0), from, to);
+  const sp = (cat) => sumRange(plan[cat]               || Array(12).fill(0), from, to);
 
-  const totalProj = rows.reduce((s,r)=>s+r.proj,0);
-  const totalReal = rows.reduce((s,r)=>s+r.real,0);
-  const ating = totalProj>0 ? totalReal/totalProj : 0;
+  // Build section totals
+  const secs = ORC_GERAL_SECOES.map(sec => {
+    let orcSum = 0, realSum = 0;
+    const cats = sec.cats.map(cat => {
+      const orc  = sp(cat);
+      const real = sec.tipo === 'rec' ? sr(cat) : sc(cat);
+      orcSum  += orc;
+      realSum += real;
+      return { cat, orc, real };
+    });
+    return { ...sec, cats, orcSum, realSum };
+  });
 
-  document.getElementById('cat-proj-total').textContent = fmtK(totalProj);
-  document.getElementById('cat-real-total').textContent = fmtK(totalReal);
-  document.getElementById('cat-ating').textContent = fmtPct(ating);
+  const get = id => secs.find(x => x.id === id) || { orcSum:0, realSum:0, cats:[], tipo:'desp' };
+  const secRec  = get('rec');
+  const secDed  = get('ded');
+  const secCus  = get('cus');
+  const secDesp = get('desp');
+  const secInv  = get('inv');
 
-  const tbody = document.getElementById('cat-table-body');
-  tbody.innerHTML = '';
-  for (const r of rows) {
-    const st = r.vari===0&&r.proj===0&&r.real===0 ? ['badge-gray','—'] : r.vari<=0 ? ['badge-green','Dentro'] : ['badge-red','Estourou'];
-    tbody.innerHTML += `<tr>
-      <td class="td-name">${r.cat}</td>
-      <td class="td-mono">${fmtK(r.proj)}</td>
-      <td class="td-mono">${fmtK(r.real)}</td>
-      <td class="td-mono" style="color:${r.vari<=0?'var(--green)':'var(--red)'}">${r.vari>=0?'+':''}${fmtPct(r.vari)}</td>
-      <td><span class="badge ${st[0]}">${st[1]}</span></td>
+  // Denominators for % (Receita Bruta)
+  const orcBase  = secRec.orcSum  || 1;
+  const realBase = secRec.realSum || 1;
+
+  // DRE calculated lines
+  const orcLiq   = secRec.orcSum  - secDed.orcSum;
+  const realLiq  = secRec.realSum - secDed.realSum;
+  const orcMarg  = orcLiq  - secCus.orcSum;
+  const realMarg = realLiq - secCus.realSum;
+  const orcTotalDesp  = secDed.orcSum  + secCus.orcSum  + secDesp.orcSum  + secInv.orcSum;
+  const realTotalDesp = secDed.realSum + secCus.realSum + secDesp.realSum + secInv.realSum;
+  const orcRes   = orcMarg  - secDesp.orcSum  - secInv.orcSum;
+  const realRes  = realMarg - secDesp.realSum - secInv.realSum;
+
+  // KPI cards
+  document.getElementById('opex-rec-real').textContent  = fmtK(secRec.realSum);
+  document.getElementById('opex-rec-orc').textContent   = 'Orçado: ' + fmtK(secRec.orcSum);
+  document.getElementById('opex-desp-real').textContent = fmtK(realTotalDesp);
+  document.getElementById('opex-desp-orc').textContent  = 'Orçado: ' + fmtK(orcTotalDesp);
+  const resEl = document.getElementById('opex-res-real');
+  resEl.textContent = fmtK(realRes);
+  resEl.style.color = realRes >= 0 ? 'var(--green)' : 'var(--red)';
+  document.getElementById('opex-res-orc').textContent   = 'Orçado: ' + fmtK(orcRes);
+
+  // Period label
+  const periodLabel = from === to ? MESES[from] : `${MESES[from]}–${MESES[to]}`;
+  document.getElementById('opex-base').textContent = `Base: ${periodLabel} ${ANO_FILTRO}`;
+
+  // --- Row builders ---
+  const fp = v => fmtPct(v);
+  const p  = (val, base) => base > 0 ? val / base : 0;
+
+  function catRow(cat, orc, real, tipo) {
+    const op = p(orc,  orcBase);
+    const rp = p(real, realBase);
+    const d  = rp - op;
+    const good = tipo === 'rec' ? d >  0.0005 : d < -0.0005;
+    const bad  = tipo === 'rec' ? d < -0.0005 : d >  0.0005;
+    const dc = good ? 'var(--green)' : bad ? 'var(--red)' : 'var(--text2)';
+    const dl = Math.abs(d) < 0.0005 ? '—' : (d > 0 ? '+' : '') + fp(d);
+    return `<tr>
+      <td class="td-name" style="padding-left:24px">${cat}</td>
+      <td class="td-mono" style="text-align:right">${orc  > 0 ? fmtK(orc)  : '<span style="color:#d1d5db">—</span>'}</td>
+      <td class="td-mono" style="text-align:right;color:var(--text2)">${orc  > 0 ? fp(op) : '<span style="color:#d1d5db">—</span>'}</td>
+      <td class="td-mono" style="text-align:right">${real > 0 ? fmtK(real) : '<span style="color:#d1d5db">—</span>'}</td>
+      <td class="td-mono" style="text-align:right;color:var(--text2)">${real > 0 ? fp(rp) : '<span style="color:#d1d5db">—</span>'}</td>
+      <td class="td-mono" style="text-align:right;color:${dc}">${dl}</td>
     </tr>`;
   }
+
+  function sectionHeaderRow(label) {
+    return `<tr class="orc-section-header"><td colspan="6">${label}</td></tr>`;
+  }
+
+  function subtotalRow(label, orc, real, tipo) {
+    const op = p(orc,  orcBase);
+    const rp = p(real, realBase);
+    const d  = rp - op;
+    const good = tipo === 'rec' ? d >  0.0005 : d < -0.0005;
+    const bad  = tipo === 'rec' ? d < -0.0005 : d >  0.0005;
+    const dc = good ? '#15803d' : bad ? '#dc2626' : '#64748b';
+    const dl = Math.abs(d) < 0.0005 ? '—' : (d > 0 ? '+' : '') + fp(d);
+    return `<tr style="background:#f8fafc">
+      <td class="td-name" style="font-weight:700;padding-left:12px">${label}</td>
+      <td class="td-mono" style="text-align:right;font-weight:700">${orc  > 0 ? fmtK(orc)  : '—'}</td>
+      <td class="td-mono" style="text-align:right;font-weight:700;color:var(--text2)">${orc  > 0 ? fp(op) : '—'}</td>
+      <td class="td-mono" style="text-align:right;font-weight:700">${real > 0 ? fmtK(real) : '—'}</td>
+      <td class="td-mono" style="text-align:right;font-weight:700;color:var(--text2)">${real > 0 ? fp(rp) : '—'}</td>
+      <td class="td-mono" style="text-align:right;font-weight:700;color:${dc}">${dl}</td>
+    </tr>`;
+  }
+
+  function calcRow(label, orc, real, bg) {
+    const op = p(orc,  orcBase);
+    const rp = p(real, realBase);
+    const d  = rp - op;
+    const oc = orc  >= 0 ? '#1d4ed8' : '#dc2626';
+    const rc = real >= 0 ? '#15803d' : '#dc2626';
+    const dc = Math.abs(d) < 0.001 ? '#64748b' : (d > 0 === real >= 0 ? '#15803d' : '#dc2626');
+    const dl = Math.abs(d) < 0.0005 ? '—' : (d > 0 ? '+' : '') + fp(d);
+    return `<tr style="background:${bg}">
+      <td class="td-name" style="font-weight:700">${label}</td>
+      <td class="td-mono" style="text-align:right;font-weight:700;color:${oc}">${fmtK(orc)}</td>
+      <td class="td-mono" style="text-align:right;font-weight:700;color:${oc}">${fp(op)}</td>
+      <td class="td-mono" style="text-align:right;font-weight:700;color:${rc}">${fmtK(real)}</td>
+      <td class="td-mono" style="text-align:right;font-weight:700;color:${rc}">${fp(rp)}</td>
+      <td class="td-mono" style="text-align:right;font-weight:700;color:${dc}">${dl}</td>
+    </tr>`;
+  }
+
+  // --- Assemble DRE ---
+  let html = '';
+
+  html += sectionHeaderRow('RECEITAS');
+  for (const {cat, orc, real} of secRec.cats) html += catRow(cat, orc, real, 'rec');
+  html += subtotalRow('▸ Receita Bruta', secRec.orcSum, secRec.realSum, 'rec');
+
+  html += sectionHeaderRow('DEDUÇÕES DA RECEITA');
+  for (const {cat, orc, real} of secDed.cats) html += catRow(cat, orc, real, 'desp');
+  html += subtotalRow('▸ Total Deduções', secDed.orcSum, secDed.realSum, 'desp');
+  html += calcRow('RECEITA LÍQUIDA', orcLiq, realLiq, 'var(--blue-bg)');
+
+  html += sectionHeaderRow('CUSTOS DOS SERVIÇOS');
+  for (const {cat, orc, real} of secCus.cats) html += catRow(cat, orc, real, 'desp');
+  html += subtotalRow('▸ Total Custos', secCus.orcSum, secCus.realSum, 'desp');
+  html += calcRow('MARGEM DE CONTRIBUIÇÃO', orcMarg, realMarg, 'var(--blue-bg)');
+
+  html += sectionHeaderRow('DESPESAS OPERACIONAIS');
+  for (const {cat, orc, real} of secDesp.cats) html += catRow(cat, orc, real, 'desp');
+  html += subtotalRow('▸ Total Despesas Op.', secDesp.orcSum, secDesp.realSum, 'desp');
+
+  html += sectionHeaderRow('INVESTIMENTOS');
+  for (const {cat, orc, real} of secInv.cats) html += catRow(cat, orc, real, 'desp');
+  html += subtotalRow('▸ Total Investimentos', secInv.orcSum, secInv.realSum, 'desp');
+
+  html += calcRow('RESULTADO OPERACIONAL', orcRes, realRes, '#dbeafe');
+
+  document.getElementById('opex-table-body').innerHTML = html;
 }
 
 // Receita projetada por CC derivada do Orçamento Geral — fonte única de verdade para meta_rec
