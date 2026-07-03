@@ -1305,6 +1305,7 @@ async function carregarAsaasSaldos(asaasToken) {
           valor: Math.abs(v),
           tipo: v > 0 ? 'entrada' : 'saida',
           desc: t.description || t.transactionType || '—',
+          balance: parseFloat(t.balance ?? 0),
         });
       }
       if (!d5.hasMore) break;
@@ -2316,24 +2317,32 @@ function fluxoAgregarDados(semanas, cc) {
 
     for (const s of semanas) s.lancamentos.sort((a, b) => a.data - b.data);
 
-    // Saldo de abertura = saldo Asaas em 01/Jan + movimentos Asaas anteriores ao período exibido
-    let acum = ASAAS_SALDO_ABERTURA[ANO_FILTRO] ?? 0;
-    const jan1 = new Date(ANO_FILTRO, 0, 1);
-    const periodoInicio = semanas.length > 0 ? semanas[0].start : inicio;
-    if (periodoInicio > jan1) {
-      for (const mov of ASAAS_MOVIMENTOS_LIST) {
-        if (!mov.date) continue;
-        const dt = toDay(new Date(mov.date));
-        if (dt.getFullYear() === ANO_FILTRO && dt >= jan1 && dt < periodoInicio) {
-          acum += mov.tipo === 'entrada' ? mov.valor : -mov.valor;
-        }
-      }
-    }
-    console.log(`[Fluxo] abertura período ${from+1}/${ANO_FILTRO}: R$${acum.toFixed(2)} (Asaas 01/Jan + pré-período)`);
+    // Saldo acum: usa o campo balance (saldo real Asaas após cada transação) da última
+    // transação de cada semana — elimina qualquer deriva de abertura hardcoded.
+    // Para semanas sem transações, carrega o balance da transação anterior mais recente.
+    const movOrdenados = [...ASAAS_MOVIMENTOS_LIST].sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
 
+    let ultimoBalance = ASAAS_SALDO_ABERTURA[ANO_FILTRO] ?? 0;
+    // Ajusta abertura: última transação antes do início do período
+    for (const mov of movOrdenados) {
+      if (!mov.date) continue;
+      const dt = toDay(new Date(mov.date));
+      if (dt < (semanas.length > 0 ? semanas[0].start : inicio)) ultimoBalance = mov.balance;
+    }
+    console.log(`[Fluxo] abertura período ${from+1}/${ANO_FILTRO}: R$${ultimoBalance.toFixed(2)} (balance Asaas pré-período)`);
+
+    let movIdx = 0;
     for (const s of semanas) {
-      acum += s.entradas_real - s.saidas_real;
-      s.saldo_acum = acum;
+      // Avança pelo array ordenado e pega o balance da última transação dentro da semana
+      let balanceSemana = null;
+      while (movIdx < movOrdenados.length) {
+        const dt = toDay(new Date(movOrdenados[movIdx].date));
+        if (dt > s.end) break;
+        if (dt >= s.start) balanceSemana = movOrdenados[movIdx].balance;
+        movIdx++;
+      }
+      ultimoBalance = balanceSemana !== null ? balanceSemana : ultimoBalance;
+      s.saldo_acum = ultimoBalance;
     }
 
   } else {
