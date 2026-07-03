@@ -2850,8 +2850,24 @@ function renderOpex() {
     </tr>`;
   }
 
-  function sectionHeaderRow(label) {
-    return `<tr class="orc-section-header"><td colspan="6">${label}</td></tr>`;
+  function sectionHeaderRow(label, orc, real) {
+    if (orc === undefined) {
+      return `<tr class="orc-section-header"><td colspan="6">${label}</td></tr>`;
+    }
+    const op = p(orc,  orcBase);
+    const rp = p(real, realBase);
+    const d  = rp - op;
+    const dc = d < -0.0005 ? '#86efac' : d > 0.0005 ? '#fca5a5' : '#d1d5db';
+    const dl = Math.abs(d) < 0.0005 ? '—' : (d > 0 ? '+' : '') + fp(d);
+    const s  = 'background:var(--text);color:white;font-weight:700;font-size:13px;padding:9px 12px;';
+    return `<tr>
+      <td class="td-name" style="${s}">${label}</td>
+      <td class="td-mono" style="${s}text-align:right">${orc  > 0 ? fmtK(orc)  : '—'}</td>
+      <td class="td-mono" style="${s}text-align:right;opacity:0.75">${orc  > 0 ? fp(op) : '—'}</td>
+      <td class="td-mono" style="${s}text-align:right">${real > 0 ? fmtK(real) : '—'}</td>
+      <td class="td-mono" style="${s}text-align:right;opacity:0.75">${real > 0 ? fp(rp) : '—'}</td>
+      <td class="td-mono" style="${s}text-align:right;color:${dc};opacity:1">${dl}</td>
+    </tr>`;
   }
 
   function subgroupHeaderRow(label, orc, real) {
@@ -2860,13 +2876,14 @@ function renderOpex() {
     const d  = rp - op;
     const dc = d < -0.0005 ? '#15803d' : d > 0.0005 ? '#dc2626' : '#64748b';
     const dl = Math.abs(d) < 0.0005 ? '—' : (d > 0 ? '+' : '') + fp(d);
-    return `<tr style="background:#f1f5f9">
-      <td class="td-name" style="font-weight:700;color:#374151;padding:7px 12px;letter-spacing:0.02em">${label}</td>
-      <td class="td-mono" style="text-align:right;font-weight:700;color:#374151">${orc  > 0 ? fmtK(orc)  : '—'}</td>
-      <td class="td-mono" style="text-align:right;font-weight:700;color:#64748b">${orc  > 0 ? fp(op) : '—'}</td>
-      <td class="td-mono" style="text-align:right;font-weight:700;color:#374151">${real > 0 ? fmtK(real) : '—'}</td>
-      <td class="td-mono" style="text-align:right;font-weight:700;color:#64748b">${real > 0 ? fp(rp) : '—'}</td>
-      <td class="td-mono" style="text-align:right;font-weight:700;color:${dc}">${dl}</td>
+    const s  = 'background:#f1f5f9;font-weight:700;font-size:13px;color:#374151;padding:7px 12px;';
+    return `<tr>
+      <td class="td-name" style="${s}">${label}</td>
+      <td class="td-mono" style="${s}text-align:right">${orc  > 0 ? fmtK(orc)  : '—'}</td>
+      <td class="td-mono" style="${s}text-align:right;color:#64748b">${orc  > 0 ? fp(op) : '—'}</td>
+      <td class="td-mono" style="${s}text-align:right">${real > 0 ? fmtK(real) : '—'}</td>
+      <td class="td-mono" style="${s}text-align:right;color:#64748b">${real > 0 ? fp(rp) : '—'}</td>
+      <td class="td-mono" style="${s}text-align:right;color:${dc}">${dl}</td>
     </tr>`;
   }
 
@@ -2923,8 +2940,8 @@ function renderOpex() {
   html += subtotalRow('▸ Total Deduções', dedTot.orc, dedTot.real, 'desp');
   html += calcRow('RECEITA LÍQUIDA', orcLiq, realLiq, 'var(--blue-bg)');
 
-  // CUSTOS OPERACIONAIS — com subgrupos (total na própria linha do subgrupo)
-  html += sectionHeaderRow('CUSTOS OPERACIONAIS');
+  // CUSTOS OPERACIONAIS — cabeçalho com total inline + subgrupos
+  html += sectionHeaderRow('CUSTOS OPERACIONAIS', cusTot.orc, cusTot.real);
   for (const sg of DRE_CUSTOS_SUBGROUPS) {
     const sgTot = sumCats(sg.cats, 'desp');
     if (sg.label) html += subgroupHeaderRow(sg.label, sgTot.orc, sgTot.real);
@@ -2934,26 +2951,23 @@ function renderOpex() {
       html += catRow(cat, orc, real, 'desp', indent);
     }
   }
-  html += subtotalRow('▸ Total Custos Operacionais', cusTot.orc, cusTot.real, 'desp');
   html += calcRow('MARGEM DE CONTRIBUIÇÃO', orcMarg, realMarg, 'var(--blue-bg)');
 
-  // DESPESAS OPERACIONAIS (cats restantes que não estão em CUSTOS)
+  // DESPESAS OPERACIONAIS — cabeçalho com total inline
   if (despCats.length > 0) {
-    html += sectionHeaderRow('DESPESAS OPERACIONAIS');
+    html += sectionHeaderRow('DESPESAS OPERACIONAIS', despTot.orc, despTot.real);
     for (const cat of despCats) {
       const orc = sp(cat), real = sc(cat);
       html += catRow(cat, orc, real, 'desp');
     }
-    html += subtotalRow('▸ Total Despesas Op.', despTot.orc, despTot.real, 'desp');
   }
 
-  // INVESTIMENTOS
-  html += sectionHeaderRow('INVESTIMENTOS');
+  // INVESTIMENTOS — cabeçalho com total inline
+  html += sectionHeaderRow('INVESTIMENTOS', invTot.orc, invTot.real);
   for (const cat of invCats) {
     const orc = sp(cat), real = sc(cat);
     html += catRow(cat, orc, real, 'desp');
   }
-  html += subtotalRow('▸ Total Investimentos', invTot.orc, invTot.real, 'desp');
 
   html += calcRow('RESULTADO OPERACIONAL', orcRes, realRes, '#dbeafe');
 
