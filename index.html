@@ -911,14 +911,18 @@ const ASAAS_SALDO_ABERTURA = {
 // Chave = mês 1-based (1=Jan…12=Dez) = abertura daquele mês = fechamento verificado do mês anterior.
 // Necessário porque o Nibo (schedules/debit) não captura todas as saídas da conta Asaas.
 // Atualizar após confirmar cada fechamento mensal.
-// Âncoras mensais verificadas no extrato Asaas (abertura do mês = fechamento verificado do anterior).
-// Fórmula: âncora_mês = fechamento_verificado - net_Nibo_mês
-// Jan: net_Nibo = 39758.24 - 14111.43 = 25646.81 → âncora = 42497.32 - 25646.81 = 16850.51
+// Âncoras mensais verificadas no extrato Asaas.
+// Chave = mês 1-based; valor = saldo de abertura = fechamento verificado do mês anterior.
+// Chave [m+1] também serve como âncora de FECHAMENTO do mês m (via mecanismo de closing-anchor).
 const SALDO_ABERTURA_MENSAL = {
   2026: {
-    1: 16850.51,  // Jan: âncora calculada para fechar em R$42.497,32
-    2: 42497.32,  // Fev: fechamento verificado de Jan/2026
-    3: 43306.92,  // Mar: fechamento verificado de Fev/2026
+    1: 16850.51,  // Jan abertura (back-calc: fecha em 42.497,32)
+    2: 42497.32,  // Fev abertura = Jan fechamento verificado
+    3: 43306.92,  // Mar abertura = Fev fechamento verificado
+    4: 25214.63,  // Abr abertura = Mar fechamento verificado
+    5: 47879.14,  // Mai abertura = Abr fechamento verificado
+    6: 48121.15,  // Jun abertura = Mai fechamento verificado
+    7: 28230.06,  // Jul abertura = Jun fechamento verificado
   }
 };
 
