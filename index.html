@@ -2796,11 +2796,11 @@ function renderOpex() {
   const orcBase  = recTot.orc  || 1;
   const realBase = recTot.real || 1;
 
-  // Calculated lines: MARGEM = RECEITA − CUSTOS; RESULTADO = MARGEM − DESPESAS − INV
+  // Calculated lines: MARGEM = RECEITA − CUSTOS; RESULTADO = MARGEM − DESPESAS (sem INV)
   const orcMarg  = recTot.orc  - cusTot.orc;
   const realMarg = recTot.real - cusTot.real;
-  const orcRes   = orcMarg  - despTot.orc  - invTot.orc;
-  const realRes  = realMarg - despTot.real - invTot.real;
+  const orcRes   = orcMarg  - despTot.orc;
+  const realRes  = realMarg - despTot.real;
   const orcTotalDesp  = cusTot.orc  + despTot.orc  + invTot.orc;
   const realTotalDesp = cusTot.real + despTot.real + invTot.real;
 
@@ -2946,14 +2946,14 @@ function renderOpex() {
     }
   }
 
-  // INVESTIMENTOS
+  html += calcRow('RESULTADO OPERACIONAL', orcRes, realRes, '#dbeafe');
+
+  // INVESTIMENTOS — após o resultado operacional
   html += sectionHeaderRow('INVESTIMENTOS', invTot.orc, invTot.real);
   for (const cat of invCats) {
     const orc = sp(cat), real = sc(cat);
     html += catRow(cat, orc, real, 'desp');
   }
-
-  html += calcRow('RESULTADO OPERACIONAL', orcRes, realRes, '#dbeafe');
 
   document.getElementById('opex-table-body').innerHTML = html;
 }
