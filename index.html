@@ -2854,9 +2854,19 @@ function renderOpex() {
     return `<tr class="orc-section-header"><td colspan="6">${label}</td></tr>`;
   }
 
-  function subgroupHeaderRow(label) {
+  function subgroupHeaderRow(label, orc, real) {
+    const op = p(orc,  orcBase);
+    const rp = p(real, realBase);
+    const d  = rp - op;
+    const dc = d < -0.0005 ? '#15803d' : d > 0.0005 ? '#dc2626' : '#64748b';
+    const dl = Math.abs(d) < 0.0005 ? '—' : (d > 0 ? '+' : '') + fp(d);
     return `<tr style="background:#f1f5f9">
-      <td class="td-name" colspan="6" style="font-weight:700;font-size:11px;color:#475569;padding:6px 12px;letter-spacing:0.03em;text-transform:uppercase">${label}</td>
+      <td class="td-name" style="font-weight:700;color:#374151;padding:7px 12px;letter-spacing:0.02em">${label}</td>
+      <td class="td-mono" style="text-align:right;font-weight:700;color:#374151">${orc  > 0 ? fmtK(orc)  : '—'}</td>
+      <td class="td-mono" style="text-align:right;font-weight:700;color:#64748b">${orc  > 0 ? fp(op) : '—'}</td>
+      <td class="td-mono" style="text-align:right;font-weight:700;color:#374151">${real > 0 ? fmtK(real) : '—'}</td>
+      <td class="td-mono" style="text-align:right;font-weight:700;color:#64748b">${real > 0 ? fp(rp) : '—'}</td>
+      <td class="td-mono" style="text-align:right;font-weight:700;color:${dc}">${dl}</td>
     </tr>`;
   }
 
@@ -2913,18 +2923,15 @@ function renderOpex() {
   html += subtotalRow('▸ Total Deduções', dedTot.orc, dedTot.real, 'desp');
   html += calcRow('RECEITA LÍQUIDA', orcLiq, realLiq, 'var(--blue-bg)');
 
-  // CUSTOS OPERACIONAIS — com subgrupos
+  // CUSTOS OPERACIONAIS — com subgrupos (total na própria linha do subgrupo)
   html += sectionHeaderRow('CUSTOS OPERACIONAIS');
   for (const sg of DRE_CUSTOS_SUBGROUPS) {
-    if (sg.label) html += subgroupHeaderRow(sg.label);
+    const sgTot = sumCats(sg.cats, 'desp');
+    if (sg.label) html += subgroupHeaderRow(sg.label, sgTot.orc, sgTot.real);
     const indent = sg.label ? 32 : 24;
     for (const cat of sg.cats) {
       const orc = sp(cat), real = sc(cat);
       html += catRow(cat, orc, real, 'desp', indent);
-    }
-    if (sg.label) {
-      const sgTot = sumCats(sg.cats, 'desp');
-      html += subtotalRow(`▸ Total ${sg.label}`, sgTot.orc, sgTot.real, 'desp', 20);
     }
   }
   html += subtotalRow('▸ Total Custos Operacionais', cusTot.orc, cusTot.real, 'desp');
