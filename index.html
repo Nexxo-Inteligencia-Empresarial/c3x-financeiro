@@ -2955,6 +2955,11 @@ function renderOpex() {
     html += catRow(cat, orc, real, 'desp');
   }
 
+  // VARIAÇÃO DE CAIXA = RESULTADO OPERACIONAL − INVESTIMENTOS
+  const orcVarCaixa  = orcRes  - invTot.orc;
+  const realVarCaixa = realRes - invTot.real;
+  html += calcRow('VARIAÇÃO DE CAIXA', orcVarCaixa, realVarCaixa, '#dbeafe');
+
   document.getElementById('opex-table-body').innerHTML = html;
 }
 
