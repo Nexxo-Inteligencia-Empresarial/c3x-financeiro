@@ -2920,6 +2920,7 @@ function renderOpex() {
 
   // RECEITA OPERACIONAL
   html += sectionHeaderRow('RECEITA OPERACIONAL', recTot.orc, recTot.real);
+  html += subtotalRow('▸ Receita Bruta', recTot.orc, recTot.real, 'rec');
 
   // CUSTOS OPERACIONAIS
   html += sectionHeaderRow('CUSTOS OPERACIONAIS', cusTot.orc, cusTot.real);
