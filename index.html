@@ -457,6 +457,29 @@ tr:hover td { background: #f9fafb; }
         <div class="kpi-delta" id="kv-marg-delta">—</div>
       </div>
     </div>
+    <div class="kpi-grid kpi-grid-3" id="kv-extra-row" style="display:none;margin-top:-0.5rem">
+      <div class="kpi-card">
+        <div class="kpi-label">Runway de caixa</div>
+        <div class="kpi-value" id="kv-runway">—</div>
+        <span class="kpi-tag realized">meses de operação</span>
+        <div class="kpi-proj" id="kv-runway-saldo">Saldo: —</div>
+        <div class="kpi-delta" id="kv-runway-burn">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Escola de Sócios</div>
+        <div class="kpi-value" id="kv-escola-cur">—</div>
+        <span class="kpi-tag realized">período atual</span>
+        <div class="kpi-proj" id="kv-escola-prev">Anterior: —</div>
+        <div class="kpi-delta" id="kv-escola-delta">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Prime</div>
+        <div class="kpi-value" id="kv-prime-cur">—</div>
+        <span class="kpi-tag realized">período atual</span>
+        <div class="kpi-proj" id="kv-prime-prev">Anterior: —</div>
+        <div class="kpi-delta" id="kv-prime-delta">—</div>
+      </div>
+    </div>
     <div class="charts-grid">
       <div class="chart-card">
         <div class="chart-title">Receita — Projetado × Realizado</div>
@@ -714,6 +737,10 @@ tr:hover td { background: #f9fafb; }
       <p class="page-sub">Recebimentos vencidos e não pagos — atualizado via Nibo API.</p>
     </div>
     <div class="kpi-grid" id="inadim-kpis" style="margin-bottom:1.5rem"></div>
+    <div class="chart-card" style="margin-bottom:1.5rem">
+      <div class="chart-title">Evolução mensal da inadimplência</div>
+      <div style="height:200px"><canvas id="chartInadimHist"></canvas></div>
+    </div>
     <div class="table-card">
       <div class="table-header" style="flex-wrap:wrap;gap:10px">
         <div>
@@ -2204,6 +2231,39 @@ function renderInadim() {
       <div class="kpi-sub neu">${n90p} registro(s)</div>
     </div>`;
 
+  // Gráfico histórico de inadimplência por mês
+  const inadimPorMes = Array(12).fill(0);
+  for (const cc of Object.keys(CC_INADIM)) {
+    const pm = CC_INADIM[cc].porMes || [];
+    for (let m = 0; m < 12; m++) inadimPorMes[m] += (pm[m] || 0);
+  }
+  mkChart('chartInadimHist', {
+    type: 'line',
+    data: {
+      labels: MESES,
+      datasets: [{
+        label: 'Inadimplência',
+        data: inadimPorMes,
+        borderColor: '#ef4444',
+        backgroundColor: 'rgba(239,68,68,0.08)',
+        borderWidth: 2,
+        fill: true,
+        tension: 0.3,
+        pointRadius: 4,
+        pointBackgroundColor: inadimPorMes.map(v => v > 0 ? '#ef4444' : 'transparent'),
+        pointHoverRadius: 5,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' R$' + ctx.parsed.y.toLocaleString('pt-BR', {minimumFractionDigits:0}) } } },
+      scales: {
+        y: { beginAtZero: true, ticks: { callback: v => 'R$' + Math.round(v/1000) + 'k', font: { size: 11 } }, grid: { color: '#f3f4f6' } },
+        x: { ticks: { font: { size: 11 } }, grid: { display: false } }
+      }
+    }
+  });
+
   // Abas por CC
   const ccs = [...new Set(INADIM_ITENS.map(i => i.cc))].sort();
   document.getElementById('inadim-tabs').innerHTML =
@@ -2765,6 +2825,46 @@ function renderVisao() {
       <td><span class="badge ${pctClass}">${Math.round(pct*100)}%</span></td>
     </tr>`;
   }
+
+  // --- Runway de caixa + NRR por produto ---
+  const delta   = to - from + 1;
+  const prevFrom = from - delta;
+  const prevTo   = to   - delta;
+  const hasPrev  = prevFrom >= 0;
+
+  let extraVisible = false;
+
+  if (SALDO_ASAAS_ATUAL !== null && SALDO_ASAAS_ATUAL > 0 && despReal > 0) {
+    const burnRate = despReal / delta;
+    const runway   = SALDO_ASAAS_ATUAL / burnRate;
+    const rc = runway >= 6 ? 'var(--green)' : runway >= 3 ? 'var(--amber)' : 'var(--red)';
+    document.getElementById('kv-runway').textContent       = runway.toFixed(1) + ' meses';
+    document.getElementById('kv-runway').style.color       = rc;
+    document.getElementById('kv-runway-saldo').textContent = 'Saldo: ' + fmtK(SALDO_ASAAS_ATUAL);
+    document.getElementById('kv-runway-burn').textContent  = 'Burn rate: ' + fmtK(burnRate) + '/mês';
+    document.getElementById('kv-runway-burn').className    = 'kpi-delta';
+    extraVisible = true;
+  }
+
+  const produtos = [
+    { cur: 'kv-escola-cur', prev: 'kv-escola-prev', delta: 'kv-escola-delta', arr: REAL.escola },
+    { cur: 'kv-prime-cur',  prev: 'kv-prime-prev',  delta: 'kv-prime-delta',  arr: REAL.prime  },
+  ];
+  for (const p of produtos) {
+    const curVal  = sumRange(p.arr, from, to);
+    const prevVal = hasPrev ? sumRange(p.arr, prevFrom, prevTo) : 0;
+    if (curVal === 0 && prevVal === 0) continue;
+    const dp = prevVal > 0 ? (curVal - prevVal) / prevVal : null;
+    const dc = dp === null ? '' : dp >= 0 ? 'var(--green)' : 'var(--red)';
+    const dl = dp === null ? '—' : (dp >= 0 ? '+' : '') + (dp * 100).toFixed(1) + '% vs anterior';
+    document.getElementById(p.cur).textContent   = fmtK(curVal);
+    document.getElementById(p.prev).textContent  = prevVal > 0 ? 'Anterior: ' + fmtK(prevVal) : 'Sem período anterior';
+    document.getElementById(p.delta).textContent = dl;
+    document.getElementById(p.delta).className   = 'kpi-delta ' + (dp === null ? '' : dp >= 0 ? 'pos' : 'neg');
+    extraVisible = true;
+  }
+
+  document.getElementById('kv-extra-row').style.display = extraVisible ? '' : 'none';
 }
 
 function renderOpex() {
