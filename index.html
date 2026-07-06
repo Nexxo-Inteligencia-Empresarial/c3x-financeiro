@@ -4314,13 +4314,16 @@ function renderOrcTabela(cc) {
       const deltaHtml = delta !== null
         ? `<div class="orc-delta ${delta >= 0 ? 'pos' : 'neg'}">${delta >= 0 ? '+' : ''}${delta.toFixed(0)}%</div>`
         : '';
+      const _planInp = `<input type="number" class="orc-input orc-row-input" data-cc="${cc}" data-kpi="${kpi.id}" data-tipo="plan" data-mes="${m}" value="${planVal}" min="0" step="${kpi.unit==='%'?'0.1':'1'}" title="Planejado ${MESES[m]}" oninput="salvarOrcamento(true)"${kpi.unit==='R$'?' style="width:60px;text-align:right"':''}>`;
+      const _planCell = kpi.unit === 'R$'
+        ? `<div style="display:flex;align-items:center;gap:2px"><span style="font-size:10px;color:var(--text2);flex-shrink:0">R$</span>${_planInp}</div>`
+        : kpi.unit === '%'
+          ? `<div style="display:flex;align-items:center;gap:2px">${_planInp}<span style="font-size:10px;color:var(--text2);flex-shrink:0">%</span></div>`
+          : _planInp;
 
       cellsPR += `
         <td style="padding:4px;min-width:70px">
-          <input type="number" class="orc-input orc-row-input"
-            data-cc="${cc}" data-kpi="${kpi.id}" data-tipo="plan" data-mes="${m}"
-            value="${planVal}" min="0" step="${kpi.unit==='%'?'0.1':'1'}"
-            title="Planejado ${MESES[m]}" oninput="salvarOrcamento(true)">
+          ${_planCell}
           ${kpi.autoReal
             ? `<input type="number" class="orc-input auto" value="${realVal.toFixed(kpi.unit==='%'?1:0)}" title="${kpi.autoDesc} ${MESES[m]}">`
             : `<input type="number" class="orc-input realizado orc-row-input"
@@ -4371,10 +4374,14 @@ function renderOrcTabela(cc) {
       ? `<div class="orc-delta ${delta <= 0 ? 'pos' : 'neg'}">${(delta >= 0 ? '+' : '') + delta.toFixed(0)}%</div>`
       : '';
     metaDespCells += `<td style="padding:4px;min-width:70px">
-      <input type="number" class="orc-input orc-row-input"
-        data-cc="${cc}" data-kpi="meta_desp" data-tipo="plan" data-mes="${i}"
-        value="${planVal || ''}" min="0" step="1" placeholder="—"
-        title="Meta de Despesas ${MESES[i]}" oninput="salvarOrcamento(true)">
+      <div style="display:flex;align-items:center;gap:2px">
+        <span style="font-size:10px;color:var(--text2);flex-shrink:0">R$</span>
+        <input type="number" class="orc-input orc-row-input"
+          data-cc="${cc}" data-kpi="meta_desp" data-tipo="plan" data-mes="${i}"
+          value="${planVal || ''}" min="0" step="1" placeholder="—"
+          title="Meta de Despesas ${MESES[i]}" oninput="salvarOrcamento(true)"
+          style="width:60px;text-align:right">
+      </div>
       <input type="number" class="orc-input auto" value="${realVal.toFixed(0)}" title="Custos reais Nibo ${MESES[i]}">
       ${deltaHtml}
     </td>`;
