@@ -7,8 +7,8 @@ module.exports = async function handler(req, res) {
   const { key } = req.query;
   if (!key) return res.status(400).json({ error: 'key obrigatório' });
 
-  const kvUrl   = process.env.KV_REST_API_URL;
-  const kvToken = process.env.KV_REST_API_TOKEN;
+  const kvUrl   = process.env.KV_REST_API_URL   || process.env.UPSTASH_REDIS_REST_URL;
+  const kvToken = process.env.KV_REST_API_TOKEN  || process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!kvUrl || !kvToken) return res.status(503).json({ error: 'KV não configurado' });
 
   const headers = { 'Authorization': `Bearer ${kvToken}`, 'Content-Type': 'application/json' };
