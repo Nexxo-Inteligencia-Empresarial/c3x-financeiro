@@ -3962,11 +3962,6 @@ const DRE_CUSTOS_SUBGROUPS = [
     'Bebidas',
     'Material para Dinâmica ',
   ]},
-];
-const DRE_CUSTOS_CATS = new Set(DRE_CUSTOS_SUBGROUPS.flatMap(sg => sg.cats));
-
-/* Subgrupos de DESPESAS OPERACIONAIS para o DRE Orçamento */
-const DRE_DESPESAS_SUBGROUPS = [
   { label: 'Comercial', cats: [
     'Dedução da Receita - Comissão (Escola de Sócios)',
     'Dedução da Receita - Comissão (Prime)',
@@ -3974,6 +3969,11 @@ const DRE_DESPESAS_SUBGROUPS = [
     'Dedução da Receita - Comissão (C3X)',
     'Dedução da Receita (reembolso)',
   ]},
+];
+const DRE_CUSTOS_CATS = new Set(DRE_CUSTOS_SUBGROUPS.flatMap(sg => sg.cats));
+
+/* Subgrupos de DESPESAS OPERACIONAIS para o DRE Orçamento */
+const DRE_DESPESAS_SUBGROUPS = [
   { label: 'Marketing', cats: [
     'Marketing',
   ]},
