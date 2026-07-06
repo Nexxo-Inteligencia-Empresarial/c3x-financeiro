@@ -457,29 +457,6 @@ tr:hover td { background: #f9fafb; }
         <div class="kpi-delta" id="kv-marg-delta">—</div>
       </div>
     </div>
-    <div class="kpi-grid kpi-grid-3" id="kv-extra-row" style="display:none;margin-top:-0.5rem">
-      <div class="kpi-card">
-        <div class="kpi-label">Runway de caixa</div>
-        <div class="kpi-value" id="kv-runway">—</div>
-        <span class="kpi-tag realized">meses de operação</span>
-        <div class="kpi-proj" id="kv-runway-saldo">Saldo: —</div>
-        <div class="kpi-delta" id="kv-runway-burn">—</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-label">Escola de Sócios</div>
-        <div class="kpi-value" id="kv-escola-cur">—</div>
-        <span class="kpi-tag realized">período atual</span>
-        <div class="kpi-proj" id="kv-escola-prev">Anterior: —</div>
-        <div class="kpi-delta" id="kv-escola-delta">—</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-label">Prime</div>
-        <div class="kpi-value" id="kv-prime-cur">—</div>
-        <span class="kpi-tag realized">período atual</span>
-        <div class="kpi-proj" id="kv-prime-prev">Anterior: —</div>
-        <div class="kpi-delta" id="kv-prime-delta">—</div>
-      </div>
-    </div>
     <div class="charts-grid">
       <div class="chart-card">
         <div class="chart-title">Receita — Projetado × Realizado</div>
@@ -2690,6 +2667,20 @@ function renderFluxo() {
       <div class="kpi-proj">Abertura Jan/${ANO_FILTRO}: <strong>${fmtK(ASAAS_SALDO_ABERTURA[ANO_FILTRO] ?? 0)}</strong></div>
       <div class="kpi-delta pos">Recebimentos Asaas</div>
     </div>
+    ${(() => {
+      if (SALDO_ASAAS_ATUAL === null || SALDO_ASAAS_ATUAL <= 0 || totSaiR <= 0) return '';
+      const numMeses = to - from + 1;
+      const burnRate = totSaiR / numMeses;
+      const runway   = SALDO_ASAAS_ATUAL / burnRate;
+      const rc = runway >= 6 ? 'var(--green)' : runway >= 3 ? 'var(--amber)' : 'var(--red)';
+      return `<div class="kpi-card">
+        <div class="kpi-label">Runway de caixa</div>
+        <div class="kpi-value" style="color:${rc}">${runway.toFixed(1)} meses</div>
+        <span class="kpi-tag realized">de operação</span>
+        <div class="kpi-proj">Saldo: ${fmtK(SALDO_ASAAS_ATUAL)}</div>
+        <div class="kpi-delta">Burn rate: ${fmtK(burnRate)}/mês</div>
+      </div>`;
+    })()}
   `;
 
   const chartLabels = semanas.map(s => `S${s.n}`);
@@ -2826,45 +2817,6 @@ function renderVisao() {
     </tr>`;
   }
 
-  // --- Runway de caixa + NRR por produto ---
-  const delta   = to - from + 1;
-  const prevFrom = from - delta;
-  const prevTo   = to   - delta;
-  const hasPrev  = prevFrom >= 0;
-
-  let extraVisible = false;
-
-  if (SALDO_ASAAS_ATUAL !== null && SALDO_ASAAS_ATUAL > 0 && despReal > 0) {
-    const burnRate = despReal / delta;
-    const runway   = SALDO_ASAAS_ATUAL / burnRate;
-    const rc = runway >= 6 ? 'var(--green)' : runway >= 3 ? 'var(--amber)' : 'var(--red)';
-    document.getElementById('kv-runway').textContent       = runway.toFixed(1) + ' meses';
-    document.getElementById('kv-runway').style.color       = rc;
-    document.getElementById('kv-runway-saldo').textContent = 'Saldo: ' + fmtK(SALDO_ASAAS_ATUAL);
-    document.getElementById('kv-runway-burn').textContent  = 'Burn rate: ' + fmtK(burnRate) + '/mês';
-    document.getElementById('kv-runway-burn').className    = 'kpi-delta';
-    extraVisible = true;
-  }
-
-  const produtos = [
-    { cur: 'kv-escola-cur', prev: 'kv-escola-prev', delta: 'kv-escola-delta', arr: REAL.escola },
-    { cur: 'kv-prime-cur',  prev: 'kv-prime-prev',  delta: 'kv-prime-delta',  arr: REAL.prime  },
-  ];
-  for (const p of produtos) {
-    const curVal  = sumRange(p.arr, from, to);
-    const prevVal = hasPrev ? sumRange(p.arr, prevFrom, prevTo) : 0;
-    if (curVal === 0 && prevVal === 0) continue;
-    const dp = prevVal > 0 ? (curVal - prevVal) / prevVal : null;
-    const dc = dp === null ? '' : dp >= 0 ? 'var(--green)' : 'var(--red)';
-    const dl = dp === null ? '—' : (dp >= 0 ? '+' : '') + (dp * 100).toFixed(1) + '% vs anterior';
-    document.getElementById(p.cur).textContent   = fmtK(curVal);
-    document.getElementById(p.prev).textContent  = prevVal > 0 ? 'Anterior: ' + fmtK(prevVal) : 'Sem período anterior';
-    document.getElementById(p.delta).textContent = dl;
-    document.getElementById(p.delta).className   = 'kpi-delta ' + (dp === null ? '' : dp >= 0 ? 'pos' : 'neg');
-    extraVisible = true;
-  }
-
-  document.getElementById('kv-extra-row').style.display = extraVisible ? '' : 'none';
 }
 
 function renderOpex() {
@@ -3521,17 +3473,28 @@ function renderServicos() {
     return;
   }
 
+  const delta    = to - from + 1;
+  const prevFrom = from - delta;
+  const prevTo   = to   - delta;
+  const hasPrev  = prevFrom >= 0;
+
   document.getElementById('service-grid').innerHTML = ccsComMovimento.map((cc,idx)=>{
-    const desp = sumRange(CC_DATA[cc].desp, from, to);
-    const rec  = CC_RECEITA[cc] ? sumRange(CC_RECEITA[cc], from, to) : 0;
-    const res  = rec - desp;
-    const cor  = colors[idx % colors.length];
+    const desp    = sumRange(CC_DATA[cc].desp, from, to);
+    const rec     = CC_RECEITA[cc] ? sumRange(CC_RECEITA[cc], from, to) : 0;
+    const prevRec = hasPrev && CC_RECEITA[cc] ? sumRange(CC_RECEITA[cc], prevFrom, prevTo) : 0;
+    const res     = rec - desp;
+    const cor     = colors[idx % colors.length];
+    const dp      = rec > 0 && prevRec > 0 ? (rec - prevRec) / prevRec : null;
+    const recDeltaHtml = dp !== null
+      ? `<div class="service-row"><span style="font-size:11px;color:var(--text2)">vs período anterior</span><span style="font-size:11px;font-weight:700;color:${dp>=0?'var(--green)':'var(--red)'}">${dp>=0?'+':''}${(dp*100).toFixed(1)}%</span></div>`
+      : '';
     return `<div class="service-card" onclick="abrirCC('${cc.replace(/'/g, "\\'")}')">
       <div style="width:32px;height:4px;border-radius:2px;background:${cor};margin-bottom:12px"></div>
       <div class="service-name">${cc}</div>
       <div class="service-label">Despesa realizada</div>
       <div class="service-value">${fmtK(desp)}</div>
       ${rec>0?`<div class="service-row"><span style="font-size:12px;color:var(--text2)">Receita</span><span style="font-size:13px;font-weight:600;color:var(--green)">${fmtK(rec)}</span></div>`:''}
+      ${recDeltaHtml}
       <div class="service-row">
         <span style="font-size:12px;color:var(--text2)">Resultado</span>
         <span class="badge ${res>=0?'badge-green':'badge-red'}">${fmtK(res)}</span>
