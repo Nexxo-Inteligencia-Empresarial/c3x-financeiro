@@ -3834,6 +3834,7 @@ async function iniciar() {
   document.getElementById('setup-error').style.display = 'none';
   try {
     await carregarNibo();
+    await sincronizarOrcDeKV();
     renderTudo();
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('sidebar').style.display = 'flex';
@@ -3996,6 +3997,36 @@ function carregarOrcGeral() {
   return s ? JSON.parse(s) : {};
 }
 
+async function sincronizarOrcDeKV() {
+  if (!TOKEN) return;
+  try {
+    const r = await fetch('/api/kv?key=orc_geral');
+    if (!r.ok) return;
+    const { value } = await r.json();
+    if (value && typeof value === 'object' && Object.keys(value).length > 0) {
+      localStorage.setItem('c3x_orc_geral_v1', JSON.stringify(value));
+    } else {
+      const local = localStorage.getItem('c3x_orc_geral_v1');
+      if (local) await orcGeralParaKV(JSON.parse(local));
+    }
+  } catch (e) {
+    console.warn('[KV] sincronização falhou, usando localStorage:', e.message);
+  }
+}
+
+async function orcGeralParaKV(data) {
+  if (!TOKEN) return;
+  try {
+    await fetch('/api/kv?key=orc_geral', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Nibo-Token': TOKEN },
+      body: JSON.stringify(data)
+    });
+  } catch (e) {
+    console.warn('[KV] save falhou:', e.message);
+  }
+}
+
 function salvarOrcGeral(silent=false) {
   const inputs = document.querySelectorAll('.orc-geral-input');
   if (!inputs.length) return; // nada renderizado ainda — não sobrescrever
@@ -4008,6 +4039,7 @@ function salvarOrcGeral(silent=false) {
   });
   localStorage.setItem('c3x_orc_geral_v1', JSON.stringify(data));
   if (!silent) {
+    orcGeralParaKV(data);
     const msg = document.getElementById('orc-saved-msg');
     if (msg) { msg.style.display='inline'; setTimeout(()=>msg.style.display='none',2000); }
   }
