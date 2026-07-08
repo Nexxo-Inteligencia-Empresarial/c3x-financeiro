@@ -3905,6 +3905,8 @@ const ORC_KPIS = [
 
 let ORC_CC_ATIVO = null;
 let ORC_ABA = '__geral__'; // '__geral__' ou nome do CC
+let _orcSecCats = {}; // secId → {cats, color} — populado por renderOrcGeral
+let _orcAllRec = [], _orcAllDesp = [];
 
 /* Seções do Orçamento Geral — espelham as categorias do Nibo */
 const ORC_GERAL_SECOES = [
@@ -4039,11 +4041,53 @@ function salvarOrcGeral(silent=false) {
     data[cat][mes] = parseFloat(inp.value) || 0;
   });
   localStorage.setItem('c3x_orc_geral_v1', JSON.stringify(data));
+  atualizarTotaisOrcGeral(data);
   if (!silent) {
     orcGeralParaKV(data);
     const msg = document.getElementById('orc-saved-msg');
     if (msg) { msg.style.display='inline'; setTimeout(()=>msg.style.display='none',2000); }
   }
+}
+
+function atualizarTotaisOrcGeral(vals) {
+  // Totais por linha de categoria
+  document.querySelectorAll('[data-total-cat]').forEach(td => {
+    const arr = vals[td.dataset.totalCat] || Array(12).fill(0);
+    const total = arr.reduce((s, v) => s + v, 0);
+    td.textContent = total > 0 ? fmtK(total) : '—';
+  });
+
+  // Subtotais por seção
+  document.querySelectorAll('[data-sub-sec]').forEach(td => {
+    const sec = _orcSecCats[td.dataset.subSec];
+    if (!sec) return;
+    const mes = td.dataset.subMes;
+    if (mes === 'total') {
+      const grand = sec.cats.reduce((s, c) => s + (vals[c] || Array(12).fill(0)).reduce((a, b) => a + b, 0), 0);
+      td.innerHTML = `<span style="font-size:12px;font-weight:700;color:${sec.color}">${grand > 0 ? fmtK(grand) : '—'}</span>`;
+    } else {
+      const m = parseInt(mes);
+      const v = sec.cats.reduce((s, c) => s + ((vals[c] || [])[m] || 0), 0);
+      td.innerHTML = `<span style="font-size:11px;font-weight:700;color:${sec.color}">${v > 0 ? fmtK(v) : '—'}</span>`;
+    }
+  });
+
+  // Resultado Operacional
+  document.querySelectorAll('[data-res-mes]').forEach(td => {
+    const mes = td.dataset.resMes;
+    if (mes === 'total') {
+      const recT  = _orcAllRec.reduce((s, c) => s + (vals[c] || Array(12).fill(0)).reduce((a, b) => a + b, 0), 0);
+      const despT = _orcAllDesp.reduce((s, c) => s + (vals[c] || Array(12).fill(0)).reduce((a, b) => a + b, 0), 0);
+      const res = recT - despT;
+      td.innerHTML = `<span style="font-size:12px;font-weight:700;color:${res>=0?'#1d4ed8':'#dc2626'}">${fmtK(res)}</span>`;
+    } else {
+      const m = parseInt(mes);
+      const rec  = _orcAllRec.reduce((s, c) => s + ((vals[c] || [])[m] || 0), 0);
+      const desp = _orcAllDesp.reduce((s, c) => s + ((vals[c] || [])[m] || 0), 0);
+      const res = rec - desp;
+      td.innerHTML = `<span style="font-size:11px;font-weight:700;color:${res>=0?'#1d4ed8':'#dc2626'}">${fmtK(res)}</span>`;
+    }
+  });
 }
 
 function renderOrcGeral() {
@@ -4154,21 +4198,21 @@ function renderOrcGeral() {
     return `<tr>
       <td class="td-kpi-label">${cat}</td>
       ${cells}
-      <td style="padding:4px 8px;text-align:right;font-weight:700;font-size:12px;color:#374151;white-space:nowrap;background:#f9fafb">${totalFmt}</td>
+      <td data-total-cat="${safe}" style="padding:4px 8px;text-align:right;font-weight:700;font-size:12px;color:#374151;white-space:nowrap;background:#f9fafb">${totalFmt}</td>
     </tr>`;
   }
 
   // Linha de subtotal (somente planejado)
-  function subtotalRow(label, cats, bg, color) {
+  function subtotalRow(secId, label, cats, bg, color) {
     let cells = '', grand = 0;
     for (let m = 0; m < 12; m++) {
       const v = cats.reduce((s, c) => s + ((plan[c]||[])[m]||0), 0);
       grand += v;
-      cells += `<td style="padding:5px 4px;background:${bg};text-align:center">
+      cells += `<td data-sub-sec="${secId}" data-sub-mes="${m}" style="padding:5px 4px;background:${bg};text-align:center">
         <span style="font-size:11px;font-weight:700;color:${color}">${v > 0 ? fmtK(v) : '—'}</span>
       </td>`;
     }
-    cells += `<td style="padding:5px 8px;background:${bg};text-align:right">
+    cells += `<td data-sub-sec="${secId}" data-sub-mes="total" style="padding:5px 8px;background:${bg};text-align:right">
       <span style="font-size:12px;font-weight:700;color:${color}">${grand > 0 ? fmtK(grand) : '—'}</span>
     </td>`;
     return `<tr>
@@ -4176,27 +4220,32 @@ function renderOrcGeral() {
     </tr>`;
   }
 
+  _orcSecCats = {};
+  secoesRender.forEach(s => { _orcSecCats[s.id] = { cats: s.cats, color: s.sub.color }; });
+
   let tbody = '';
   for (const sec of secoesRender.filter(s => s.cats.length > 0)) {
     tbody += `<tr class="orc-section-header"><td colspan="14">${sec.label}</td></tr>`;
     for (const c of sec.cats) tbody += catRow(c);
-    tbody += subtotalRow(sec.sub.label, sec.cats, sec.sub.bg, sec.sub.color);
+    tbody += subtotalRow(sec.id, sec.sub.label, sec.cats, sec.sub.bg, sec.sub.color);
   }
 
   // Resultado Operacional = Receitas − todas as seções de despesa
   const allRec  = secoesRender.find(s=>s.id==='rec')?.cats || [];
   const allDesp = secoesRender.filter(s=>s.tipo==='desp').flatMap(s=>s.cats);
+  _orcAllRec = allRec;
+  _orcAllDesp = allDesp;
   let resCells = '', resTotal = 0;
   for (let m = 0; m < 12; m++) {
     const rec  = allRec.reduce((s,c)=>s+((plan[c]||[])[m]||0), 0);
     const desp = allDesp.reduce((s,c)=>s+((plan[c]||[])[m]||0), 0);
     const res  = rec - desp;
     resTotal  += res;
-    resCells  += `<td style="padding:5px 4px;background:#eff6ff;text-align:center">
+    resCells  += `<td data-res-mes="${m}" style="padding:5px 4px;background:#eff6ff;text-align:center">
       <span style="font-size:11px;font-weight:700;color:${res>=0?'#1d4ed8':'#dc2626'}">${fmtK(res)}</span>
     </td>`;
   }
-  resCells += `<td style="padding:5px 8px;background:#eff6ff;text-align:right">
+  resCells += `<td data-res-mes="total" style="padding:5px 8px;background:#eff6ff;text-align:right">
     <span style="font-size:12px;font-weight:700;color:${resTotal>=0?'#1d4ed8':'#dc2626'}">${fmtK(resTotal)}</span>
   </td>`;
   tbody += `<tr class="orc-section-header"><td colspan="14">RESULTADO OPERACIONAL</td></tr>
