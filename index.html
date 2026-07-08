@@ -2849,9 +2849,24 @@ function renderVisao() {
   const recLiqProj = recProj - dedProj;
   const margReal = recLiqReal > 0 ? (recLiqReal - custoReal) / recLiqReal : 0;
   const margProj = recLiqProj > 0 ? (recLiqProj - custoProj) / recLiqProj : 0;
+  // Categorias que Nibo coloca em seção de receita como deduções (.desp dentro de receita)
+  const _recDedCats = new Set();
+  for (const [nomeSec, info] of Object.entries(_secoesM)) {
+    if (/receita/i.test(nomeSec)) {
+      (info.desp || []).forEach(c => _recDedCats.add(c));
+      console.log('[Margem secoesAPI receita]', nomeSec, '→ rec:', info.rec, 'desp:', info.desp);
+    }
+  }
+  // Deduções encontradas em REAL.categorias por categoria
+  const _dedDetalhes = {};
+  for (const [cat, arr] of Object.entries(REAL.categorias || {})) {
+    if (_dedRegex.test(cat)) {
+      _dedDetalhes[cat] = arr.reduce((s,v)=>s+v,0);
+    }
+  }
   console.log('[Margem] recReal', recReal, 'dedReal', dedReal, 'recLiq', recLiqReal, 'custoReal', custoReal, 'marg%', (margReal*100).toFixed(1));
-  console.log('[Margem] custoCatNames', [..._custoCatNames]);
-  console.log('[Margem] REAL.categorias keys', Object.keys(REAL.categorias||{}));
+  console.log('[Margem] deduções por categoria (YTD)', _dedDetalhes);
+  console.log('[Margem] receita.desp cats (Nibo Receita section deductions)', [..._recDedCats]);
 
   const deltaRec  = recProj>0 ? (recReal-recProj)/recProj : 0;
   const deltaDesp = despProj>0 ? (despReal-despProj)/despProj : 0;
