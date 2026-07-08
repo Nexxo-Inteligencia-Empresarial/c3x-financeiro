@@ -2820,53 +2820,46 @@ function renderVisao() {
   const resReal  = recReal - despReal;
   const resProj  = sumRange(PROJ.resultado, from, to);
 
-  // Margem de Contribuição — espelha fórmula do Nibo: (A+B)/A
-  // Usa secoesAPI (nomes reais da API Nibo) para identificar categorias de custo
+  // Margem de Contribuição — replica fórmula exata do Nibo: (A+B)/A
+  // A = Receitas Operacionais líquidas (seções ^Receitas operacionais)
+  // B = Custos Operacionais (seções ^Custos operacionais)
   const _cachedMarg = JSON.parse(localStorage.getItem('c3x_nibo_cats_v4') || '{"secoes":{}}');
   const _secoesM    = _cachedMarg.secoes || {};
-  const _custoCatNames = new Set();
+
+  // Categorias de receita (crédito) e deduções de receita (débito dentro de seção de receita)
+  const _recCats    = new Set(); // categorias de crédito em Receitas operacionais
+  const _recDedCats = new Set(); // categorias de débito dentro de Receitas operacionais (deduções)
+  // Categorias de custo (débito em Custos operacionais)
+  const _custoCats  = new Set();
+
   for (const [nomeSec, info] of Object.entries(_secoesM)) {
-    if (/custo/i.test(nomeSec)) {
-      (info.desp || []).forEach(c => _custoCatNames.add(c));
-      (info.rec  || []).forEach(c => _custoCatNames.add(c));
+    if (/^receitas operacionais/i.test(nomeSec)) {
+      (info.rec  || []).forEach(c => _recCats.add(c));
+      (info.desp || []).forEach(c => _recDedCats.add(c));
+    } else if (/^custos operacionais/i.test(nomeSec)) {
+      (info.desp || []).forEach(c => _custoCats.add(c));
     }
   }
-  if (_custoCatNames.size === 0) DRE_CUSTOS_CATS.forEach(c => _custoCatNames.add(c));
 
-  const _dedRegex = /dedução da receita|comissão/i;
+  // Fallback se secoesAPI ainda não populado
+  if (_custoCats.size === 0) DRE_CUSTOS_CATS.forEach(c => _custoCats.add(c));
+
   let dedReal = 0, custoReal = 0;
   for (const [cat, arr] of Object.entries(REAL.categorias || {})) {
-    const isDed   = _dedRegex.test(cat);
-    const isCusto = (_custoCatNames.has(cat) || DRE_CUSTOS_CATS.has(cat)) && !isDed;
+    const isDed   = _recDedCats.has(cat);
+    const isCusto = _custoCats.has(cat) && !isDed;
     for (let m = from; m <= to; m++) {
       if (isDed)        dedReal   += arr[m] || 0;
       else if (isCusto) custoReal += arr[m] || 0;
     }
   }
-  const recLiqReal = recReal - dedReal;
+
+  const recLiqReal = recReal - dedReal;            // = Nibo A
   const dedProj    = sumRange(PROJ.ded,   from, to);
   const custoProj  = sumRange(PROJ.custo, from, to);
   const recLiqProj = recProj - dedProj;
   const margReal = recLiqReal > 0 ? (recLiqReal - custoReal) / recLiqReal : 0;
   const margProj = recLiqProj > 0 ? (recLiqProj - custoProj) / recLiqProj : 0;
-  // Categorias que Nibo coloca em seção de receita como deduções (.desp dentro de receita)
-  const _recDedCats = new Set();
-  for (const [nomeSec, info] of Object.entries(_secoesM)) {
-    if (/receita/i.test(nomeSec)) {
-      (info.desp || []).forEach(c => _recDedCats.add(c));
-      console.log('[Margem secoesAPI receita]', nomeSec, '→ rec:', info.rec, 'desp:', info.desp);
-    }
-  }
-  // Deduções encontradas em REAL.categorias por categoria
-  const _dedDetalhes = {};
-  for (const [cat, arr] of Object.entries(REAL.categorias || {})) {
-    if (_dedRegex.test(cat)) {
-      _dedDetalhes[cat] = arr.reduce((s,v)=>s+v,0);
-    }
-  }
-  console.log('[Margem] recReal', recReal, 'dedReal', dedReal, 'recLiq', recLiqReal, 'custoReal', custoReal, 'marg%', (margReal*100).toFixed(1));
-  console.log('[Margem] deduções por categoria (YTD)', _dedDetalhes);
-  console.log('[Margem] receita.desp cats (Nibo Receita section deductions)', [..._recDedCats]);
 
   const deltaRec  = recProj>0 ? (recReal-recProj)/recProj : 0;
   const deltaDesp = despProj>0 ? (despReal-despProj)/despProj : 0;
@@ -4334,12 +4327,20 @@ function computarProjDeOrcamento() {
   const despCats = Object.keys(plan).filter(c => despSet.has(c));
   const soma = (cats, m) => cats.reduce((s, c) => s + ((plan[c] || [])[m] || 0), 0);
 
-  // Separar deduções de receita dos custos diretos — igual à lógica do Nibo:
-  // Nibo Receita Operacional = Receita Bruta - Deduções (líquida)
-  // Nibo Custos Operacionais = custos diretos SEM as deduções
-  const dedRegexProj = /dedução da receita|comissão/i;
-  const dedCats  = despCats.filter(c => dedRegexProj.test(c));
-  const cusCats  = despCats.filter(c => DRE_CUSTOS_CATS.has(c) && !dedRegexProj.test(c));
+  // Separar deduções de receita dos custos diretos usando secoesAPI (nomes reais do Nibo)
+  const _cachedProj = JSON.parse(localStorage.getItem('c3x_nibo_cats_v4') || '{"secoes":{}}');
+  const _secoesProj = _cachedProj.secoes || {};
+  const _projDedCats  = new Set();
+  const _projCustoCats = new Set();
+  for (const [nomeSec, info] of Object.entries(_secoesProj)) {
+    if (/^receitas operacionais/i.test(nomeSec)) (info.desp || []).forEach(c => _projDedCats.add(c));
+    else if (/^custos operacionais/i.test(nomeSec)) (info.desp || []).forEach(c => _projCustoCats.add(c));
+  }
+  if (_projCustoCats.size === 0) DRE_CUSTOS_CATS.forEach(c => _projCustoCats.add(c));
+  if (_projDedCats.size === 0) { despCats.filter(c => /dedução da receita|comissão/i.test(c)).forEach(c => _projDedCats.add(c)); }
+
+  const dedCats  = despCats.filter(c => _projDedCats.has(c));
+  const cusCats  = despCats.filter(c => _projCustoCats.has(c) && !_projDedCats.has(c));
 
   for (let m = 0; m < 12; m++) {
     PROJ.receita[m]   = soma(recCats, m);
