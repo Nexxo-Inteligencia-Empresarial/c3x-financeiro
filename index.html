@@ -4093,6 +4093,8 @@ const ORC_GERAL_SECOES = [
     'Dedução da Receita - Comissão (Escola de Sócios)',
     'Dedução da Receita - Comissão (Prime)',
     'Dedução da Receita - Comissão (Destrava)',
+    'Dedução da Receita - Comissão (C3X)',
+    'Dedução da Receita (reembolso)',
     'Prestação de Serviço por Terceiros',
     'Custo serviço prestado - mão de obra',
   ]},
@@ -4121,6 +4123,13 @@ const ORC_GERAL_SECOES = [
 const DRE_CUSTOS_SUBGROUPS = [
   { label: null, cats: ['TFF'] },
   { label: 'Impostos sobre Receita', cats: ['Impostos - DAS'] },
+  { label: 'Comercial', cats: [
+    'Dedução da Receita - Comissão (Escola de Sócios)',
+    'Dedução da Receita - Comissão (Prime)',
+    'Dedução da Receita - Comissão (Destrava)',
+    'Dedução da Receita - Comissão (C3X)',
+    'Dedução da Receita (reembolso)',
+  ]},
   { label: 'Mão de Obra - Direta', cats: [
     'Custo serviço prestado - mão de obra',
     'Prestação de Serviço por Terceiros',
@@ -4142,13 +4151,6 @@ const DRE_CUSTOS_CATS = new Set(DRE_CUSTOS_SUBGROUPS.flatMap(sg => sg.cats));
 
 /* Subgrupos de DESPESAS OPERACIONAIS para o DRE Orçamento */
 const DRE_DESPESAS_SUBGROUPS = [
-  { label: 'Comercial', cats: [
-    'Dedução da Receita - Comissão (Escola de Sócios)',
-    'Dedução da Receita - Comissão (Prime)',
-    'Dedução da Receita - Comissão (Destrava)',
-    'Dedução da Receita - Comissão (C3X)',
-    'Dedução da Receita (reembolso)',
-  ]},
   { label: 'Marketing', cats: [
     'Marketing',
   ]},
