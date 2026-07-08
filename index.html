@@ -2820,13 +2820,10 @@ function renderVisao() {
   const resProj  = sumRange(PROJ.resultado, from, to);
 
   // Margem de Contribuição = (Receita - Custo dos Serviços) / Receita
-  const cusCatsSet = new Set([
-    ...(ORC_GERAL_SECOES.find(s => s.id === 'cus')?.cats || []),
-    ...Object.keys(REAL.categorias || {}).filter(c => /dedução da receita|comissão/i.test(c)),
-  ]);
+  // DRE_CUSTOS_CATS espelha exatamente os "Custos Operacionais" do Nibo
   let custoReal = 0;
   for (const [cat, arr] of Object.entries(REAL.categorias || {})) {
-    if (cusCatsSet.has(cat)) {
+    if (DRE_CUSTOS_CATS.has(cat) || /dedução da receita|comissão/i.test(cat)) {
       for (let m = from; m <= to; m++) custoReal += arr[m] || 0;
     }
   }
@@ -4301,8 +4298,8 @@ function computarProjDeOrcamento() {
   const soma = (cats, m) => cats.reduce((s, c) => s + ((plan[c] || [])[m] || 0), 0);
 
   // Categorias de custo dos serviços (para Margem de Contribuição)
-  const cusCatsHard = new Set(ORC_GERAL_SECOES.find(s => s.id === 'cus')?.cats || []);
-  const cusCats = despCats.filter(c => cusCatsHard.has(c) || /dedução da receita|comissão/i.test(c));
+  // DRE_CUSTOS_CATS espelha os "Custos Operacionais" do Nibo (Comercial já incluído)
+  const cusCats = despCats.filter(c => DRE_CUSTOS_CATS.has(c) || /dedução da receita|comissão/i.test(c));
 
   for (let m = 0; m < 12; m++) {
     PROJ.receita[m]   = soma(recCats, m);
