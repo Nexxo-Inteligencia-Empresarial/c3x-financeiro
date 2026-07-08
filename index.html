@@ -867,7 +867,7 @@ tr:hover td { background: #f9fafb; }
     </div>
 
     <!-- Asaas -->
-    <div class="table-card" style="max-width:640px">
+    <div class="table-card" style="max-width:640px;margin-bottom:1.5rem">
       <div class="table-header">
         <div>
           <div class="table-title" style="display:flex;align-items:center;gap:10px">
@@ -890,6 +890,61 @@ tr:hover td { background: #f9fafb; }
         </div>
         <p style="font-size:12px;color:var(--text2);margin:8px 0 0">Peça ao admin da conta Asaas: <strong>Configurações → Integrações → API → Gerar nova chave</strong></p>
         <p id="integ-asaas-status" style="font-size:12px;min-height:16px;margin:6px 0 0"></p>
+      </div>
+    </div>
+
+    <!-- Aparência -->
+    <div class="table-card" style="max-width:640px">
+      <div class="table-header">
+        <div>
+          <div class="table-title" style="display:flex;align-items:center;gap:10px">
+            <svg viewBox="0 0 24 24" width="18" height="18" style="fill:#7c3aed;flex-shrink:0"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5s1.5.67 1.5 1.5S10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>
+            Aparência
+          </div>
+          <div class="table-sub">Nome e logomarca exibidos no menu lateral</div>
+        </div>
+      </div>
+      <div style="padding:1.25rem;display:flex;flex-direction:column;gap:1.25rem">
+
+        <!-- Preview -->
+        <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:#111827;border-radius:10px;width:fit-content">
+          <div id="aparencia-preview-mark" style="width:32px;height:32px;background:var(--green);border-radius:7px;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">
+            <svg viewBox="0 0 24 24" width="16" height="16" style="fill:white"><path d="M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm14 3a4 4 0 100-8 4 4 0 000 8z"/></svg>
+          </div>
+          <div>
+            <div id="aparencia-preview-nome" style="font-size:14px;font-weight:700;color:white;line-height:1.2">C3X Financeiro</div>
+            <div style="font-size:11px;color:#6b7280">Dashboard Financeiro</div>
+          </div>
+        </div>
+
+        <!-- Nome -->
+        <div>
+          <label style="font-size:12px;font-weight:600;color:var(--text2);display:block;margin-bottom:6px">Nome da empresa</label>
+          <input id="aparencia-nome-input" type="text" placeholder="Ex: C3X Empreendimentos"
+            oninput="document.getElementById('aparencia-preview-nome').textContent=this.value||'C3X Financeiro'"
+            style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;box-sizing:border-box">
+        </div>
+
+        <!-- Logo -->
+        <div>
+          <label style="font-size:12px;font-weight:600;color:var(--text2);display:block;margin-bottom:6px">Logomarca <span style="font-weight:400;color:#9ca3af">(PNG, JPG ou SVG — recomendado 64×64px)</span></label>
+          <div style="display:flex;align-items:center;gap:10px">
+            <label style="padding:9px 16px;background:#f9fafb;border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;color:var(--text)">
+              Escolher arquivo
+              <input id="aparencia-logo-input" type="file" accept="image/*" style="display:none" onchange="aparenciaPreviewLogo(this)">
+            </label>
+            <span id="aparencia-logo-filename" style="font-size:12px;color:var(--text2)">Nenhum arquivo selecionado</span>
+            <button id="aparencia-logo-remove" onclick="aparenciaRemoverLogo()" style="display:none;padding:6px 12px;background:none;border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text2);cursor:pointer">Remover</button>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:12px">
+          <button onclick="salvarAparencia()"
+            style="padding:9px 20px;background:var(--green);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">
+            Salvar aparência
+          </button>
+          <span id="aparencia-status" style="font-size:13px;color:var(--green)"></span>
+        </div>
       </div>
     </div>
   </div>
@@ -3776,6 +3831,21 @@ function integAtualizarBadges() {
     asaasBadge.style.background = temAsaas ? '#dcfce7' : '#f3f4f6';
     asaasBadge.style.color      = temAsaas ? '#16a34a' : '#6b7280';
   }
+
+  // Popula form Aparência com valores atuais
+  const nomeInput = document.getElementById('aparencia-nome-input');
+  const previewNome = document.getElementById('aparencia-preview-nome');
+  const previewMark = document.getElementById('aparencia-preview-mark');
+  const logoRemove = document.getElementById('aparencia-logo-remove');
+  const logoFilename = document.getElementById('aparencia-logo-filename');
+  const nomeAtual = localStorage.getItem('c3x_empresa_nome');
+  const logoAtual = localStorage.getItem('c3x_empresa_logo');
+  if (nomeInput && nomeAtual) { nomeInput.value = nomeAtual; if (previewNome) previewNome.textContent = nomeAtual; }
+  if (logoAtual && previewMark) {
+    previewMark.innerHTML = `<img src="${logoAtual}" style="width:32px;height:32px;object-fit:contain;border-radius:7px;">`;
+    if (logoFilename) logoFilename.textContent = 'Logo atual';
+    if (logoRemove) logoRemove.style.display = 'inline-block';
+  }
 }
 
 async function integSalvarNibo() {
@@ -3906,6 +3976,80 @@ function restaurarEstadoSidebar() {
   if (localStorage.getItem('c3x_sidebar_collapsed') === '1') {
     document.getElementById('sidebar').classList.add('collapsed');
     document.getElementById('main').style.marginLeft = '56px';
+  }
+  carregarAparencia();
+}
+
+function carregarAparencia() {
+  const nome = localStorage.getItem('c3x_empresa_nome');
+  const logo = localStorage.getItem('c3x_empresa_logo');
+  if (nome) {
+    const el = document.getElementById('sidebar-company-name');
+    if (el) el.textContent = nome;
+  }
+  if (logo) aplicarLogoSidebar(logo);
+}
+
+function aplicarLogoSidebar(dataUrl) {
+  const el = document.getElementById('sidebar-logo-mark');
+  if (!el) return;
+  el.innerHTML = `<img src="${dataUrl}" alt="Logo" style="width:32px;height:32px;object-fit:contain;border-radius:7px;">`;
+}
+
+function aparenciaPreviewLogo(input) {
+  const file = input.files[0];
+  if (!file) return;
+  document.getElementById('aparencia-logo-filename').textContent = file.name;
+  document.getElementById('aparencia-logo-remove').style.display = 'inline-block';
+  const reader = new FileReader();
+  reader.onload = e => {
+    const mark = document.getElementById('aparencia-preview-mark');
+    if (mark) mark.innerHTML = `<img src="${e.target.result}" style="width:32px;height:32px;object-fit:contain;border-radius:7px;">`;
+  };
+  reader.readAsDataURL(file);
+}
+
+function aparenciaRemoverLogo() {
+  localStorage.removeItem('c3x_empresa_logo');
+  document.getElementById('aparencia-logo-input').value = '';
+  document.getElementById('aparencia-logo-filename').textContent = 'Nenhum arquivo selecionado';
+  document.getElementById('aparencia-logo-remove').style.display = 'none';
+  const svgDefault = `<svg viewBox="0 0 24 24" width="16" height="16" style="fill:white"><path d="M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm14 3a4 4 0 100-8 4 4 0 000 8z"/></svg>`;
+  const mark = document.getElementById('aparencia-preview-mark');
+  if (mark) mark.innerHTML = svgDefault;
+  const logoMark = document.getElementById('sidebar-logo-mark');
+  if (logoMark) logoMark.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" style="fill:white"><path d="M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm14 3a4 4 0 100-8 4 4 0 000 8z"/></svg>`;
+  const status = document.getElementById('aparencia-status');
+  if (status) { status.textContent = 'Logo removida.'; setTimeout(() => status.textContent = '', 2000); }
+}
+
+function salvarAparencia() {
+  const nome = (document.getElementById('aparencia-nome-input').value || '').trim();
+  const file = document.getElementById('aparencia-logo-input').files[0];
+  const status = document.getElementById('aparencia-status');
+  status.style.color = 'var(--green)';
+
+  if (nome) {
+    localStorage.setItem('c3x_empresa_nome', nome);
+    const el = document.getElementById('sidebar-company-name');
+    if (el) el.textContent = nome;
+  }
+
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const dataUrl = e.target.result;
+      localStorage.setItem('c3x_empresa_logo', dataUrl);
+      aplicarLogoSidebar(dataUrl);
+      if (status) { status.textContent = '✓ Salvo!'; setTimeout(() => status.textContent = '', 2500); }
+    };
+    reader.readAsDataURL(file);
+  } else {
+    if (nome) {
+      if (status) { status.textContent = '✓ Salvo!'; setTimeout(() => status.textContent = '', 2500); }
+    } else {
+      if (status) { status.style.color = 'var(--text2)'; status.textContent = 'Nenhuma alteração.'; setTimeout(() => { status.textContent = ''; status.style.color = ''; }, 2000); }
+    }
   }
 }
 
