@@ -178,7 +178,7 @@ tr:hover td { background: #f9fafb; }
 /* ORÇAMENTO */
 .orc-table-wrap { overflow-x: auto; margin-bottom: 1.5rem; }
 .orc-table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 900px; }
-.orc-table th { padding: 8px 10px; border-bottom: 2px solid var(--border); font-size: 11px; font-weight: 600; color: var(--text2); text-align: center; background: #f9fafb; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+.orc-table th { padding: 8px 10px; border-bottom: 2px solid var(--border); font-size: 11px; font-weight: 600; color: var(--text2); text-align: center; background: #f9fafb; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; position: sticky; top: 0; z-index: 2; }
 .orc-table th.th-kpi { text-align: left; min-width: 160px; background: #f9fafb; position: sticky; left: 0; z-index: 1; }
 .orc-table th.th-mes { min-width: 70px; }
 .orc-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: center; vertical-align: middle; }
@@ -982,6 +982,9 @@ const charts = {};
 const fmtK = v => { const a=Math.abs(v); if(a>=1000) return (v<0?'-':'')+'R$ '+(a/1000).toFixed(1)+'k'; return (v<0?'-':'')+'R$ '+a.toFixed(0); };
 const fmtFull = v => 'R$ '+Math.abs(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtPct = v => (v*100).toFixed(1)+'%';
+const fmtBRL = v => (!v && v !== 0) ? '' : Math.round(v).toLocaleString('pt-BR');
+const parseBRL = s => parseFloat(String(s||'').replace(/\./g,'').replace(',','.')) || 0;
+const parsePct = s => parseFloat(String(s||'').replace(',','.')) || 0;
 const gc = { grid:'rgba(0,0,0,0.05)', text:'#9ca3af' };
 
 function periodoMeses() {
@@ -4211,7 +4214,7 @@ function renderOrcGeral() {
         <span style="font-size:14px;font-weight:700;color:var(--text)">Planejamento Orçamentário 2026</span>
         <span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0">${modoLabel}</span>
       </div>
-      <div class="table-wrap">
+      <div style="overflow-x:auto;overflow-y:auto;max-height:calc(100vh - 220px)">
         <table class="orc-table">
           <thead><tr>
             <th class="th-kpi">Categoria</th>
@@ -4229,6 +4232,15 @@ function carregarOrcamento() {
   return saved ? JSON.parse(saved) : {};
 }
 
+function orcFormatBRL(input) {
+  const v = parseBRL(input.value);
+  input.value = v ? fmtBRL(v) : '';
+}
+function orcFormatPct(input) {
+  const v = parsePct(input.value);
+  input.value = v ? v.toFixed(1).replace('.', ',') : '';
+}
+
 function salvarOrcamento(silent=false) {
   const inputs = document.querySelectorAll('.orc-row-input');
   if (!inputs.length) return; // nada renderizado ainda — não sobrescrever
@@ -4240,7 +4252,8 @@ function salvarOrcamento(silent=false) {
     const mes  = parseInt(inp.dataset.mes);
     if (!data[cc]) data[cc] = {};
     if (!data[cc][kpi]) data[cc][kpi] = { plan: Array(12).fill(0), real: Array(12).fill(0) };
-    data[cc][kpi][tipo][mes] = parseFloat(inp.value) || 0;
+    const unit = inp.dataset.unit;
+    data[cc][kpi][tipo][mes] = unit === 'R$' ? parseBRL(inp.value) : unit === '%' ? parsePct(inp.value) : parseFloat(inp.value) || 0;
   });
   localStorage.setItem('c3x_orcamento_v1', JSON.stringify(data));
   if (!silent) {
@@ -4314,22 +4327,37 @@ function renderOrcTabela(cc) {
       const deltaHtml = delta !== null
         ? `<div class="orc-delta ${delta >= 0 ? 'pos' : 'neg'}">${delta >= 0 ? '+' : ''}${delta.toFixed(0)}%</div>`
         : '';
-      const _planInp = `<input type="number" class="orc-input orc-row-input" data-cc="${cc}" data-kpi="${kpi.id}" data-tipo="plan" data-mes="${m}" value="${planVal}" min="0" step="${kpi.unit==='%'?'0.1':'1'}" title="Planejado ${MESES[m]}" oninput="salvarOrcamento(true)"${kpi.unit==='R$'?' style="width:60px;text-align:right"':''}>`;
-      const _planCell = kpi.unit === 'R$'
-        ? `<div style="display:flex;align-items:center;gap:2px"><span style="font-size:10px;color:var(--text2);flex-shrink:0">R$</span>${_planInp}</div>`
-        : kpi.unit === '%'
-          ? `<div style="display:flex;align-items:center;gap:2px">${_planInp}<span style="font-size:10px;color:var(--text2);flex-shrink:0">%</span></div>`
-          : _planInp;
+      let _planInp, _planCell;
+      if (kpi.unit === 'R$') {
+        _planInp = `<input type="text" inputmode="numeric" class="orc-input orc-row-input" data-cc="${cc}" data-kpi="${kpi.id}" data-tipo="plan" data-mes="${m}" data-unit="R$" value="${planVal ? fmtBRL(planVal) : ''}" placeholder="0" title="Planejado ${MESES[m]}" oninput="salvarOrcamento(true)" onblur="orcFormatBRL(this)" style="width:70px;text-align:right">`;
+        _planCell = `<div style="display:flex;align-items:center;gap:2px"><span style="font-size:10px;color:var(--text2);flex-shrink:0">R$</span>${_planInp}</div>`;
+      } else if (kpi.unit === '%') {
+        _planInp = `<input type="text" inputmode="decimal" class="orc-input orc-row-input" data-cc="${cc}" data-kpi="${kpi.id}" data-tipo="plan" data-mes="${m}" data-unit="%" value="${planVal ? planVal.toFixed(1).replace('.', ',') : ''}" placeholder="0" title="Planejado ${MESES[m]}" oninput="salvarOrcamento(true)" onblur="orcFormatPct(this)" style="width:45px;text-align:right">`;
+        _planCell = `<div style="display:flex;align-items:center;gap:2px">${_planInp}<span style="font-size:10px;color:var(--text2);flex-shrink:0">%</span></div>`;
+      } else {
+        _planInp = `<input type="number" class="orc-input orc-row-input" data-cc="${cc}" data-kpi="${kpi.id}" data-tipo="plan" data-mes="${m}" value="${planVal}" min="0" step="1" title="Planejado ${MESES[m]}" oninput="salvarOrcamento(true)">`;
+        _planCell = _planInp;
+      }
 
       cellsPR += `
         <td style="padding:4px;min-width:70px">
           ${_planCell}
           ${kpi.autoReal
-            ? `<input type="number" class="orc-input auto" value="${realVal.toFixed(kpi.unit==='%'?1:0)}" title="${kpi.autoDesc} ${MESES[m]}">`
-            : `<input type="number" class="orc-input realizado orc-row-input"
-                data-cc="${cc}" data-kpi="${kpi.id}" data-tipo="real" data-mes="${m}"
-                value="${realVal}" min="0" step="${kpi.unit==='%'?'0.1':'1'}"
-                title="Realizado ${MESES[m]}" oninput="salvarOrcamento(true)">`}
+            ? `<input type="text" class="orc-input auto" value="${kpi.unit==='R$' ? fmtBRL(realVal) : kpi.unit==='%' ? realVal.toFixed(1).replace('.',',') : realVal.toFixed(0)}" title="${kpi.autoDesc} ${MESES[m]}" style="${kpi.unit==='R$'?'text-align:right':''}">`
+            : kpi.unit === 'R$'
+              ? `<input type="text" inputmode="numeric" class="orc-input realizado orc-row-input"
+                  data-cc="${cc}" data-kpi="${kpi.id}" data-tipo="real" data-mes="${m}" data-unit="R$"
+                  value="${realVal ? fmtBRL(realVal) : ''}" placeholder="0"
+                  title="Realizado ${MESES[m]}" oninput="salvarOrcamento(true)" onblur="orcFormatBRL(this)" style="text-align:right">`
+              : kpi.unit === '%'
+                ? `<input type="text" inputmode="decimal" class="orc-input realizado orc-row-input"
+                    data-cc="${cc}" data-kpi="${kpi.id}" data-tipo="real" data-mes="${m}" data-unit="%"
+                    value="${realVal ? realVal.toFixed(1).replace('.', ',') : ''}" placeholder="0"
+                    title="Realizado ${MESES[m]}" oninput="salvarOrcamento(true)" onblur="orcFormatPct(this)" style="text-align:right">`
+                : `<input type="number" class="orc-input realizado orc-row-input"
+                    data-cc="${cc}" data-kpi="${kpi.id}" data-tipo="real" data-mes="${m}"
+                    value="${realVal}" min="0" step="1"
+                    title="Realizado ${MESES[m]}" oninput="salvarOrcamento(true)">`}
           ${deltaHtml}
         </td>`;
     }
@@ -4376,13 +4404,13 @@ function renderOrcTabela(cc) {
     metaDespCells += `<td style="padding:4px;min-width:70px">
       <div style="display:flex;align-items:center;gap:2px">
         <span style="font-size:10px;color:var(--text2);flex-shrink:0">R$</span>
-        <input type="number" class="orc-input orc-row-input"
-          data-cc="${cc}" data-kpi="meta_desp" data-tipo="plan" data-mes="${i}"
-          value="${planVal || ''}" min="0" step="1" placeholder="—"
-          title="Meta de Despesas ${MESES[i]}" oninput="salvarOrcamento(true)"
-          style="width:60px;text-align:right">
+        <input type="text" inputmode="numeric" class="orc-input orc-row-input"
+          data-cc="${cc}" data-kpi="meta_desp" data-tipo="plan" data-mes="${i}" data-unit="R$"
+          value="${planVal ? fmtBRL(planVal) : ''}" placeholder="—"
+          title="Meta de Despesas ${MESES[i]}" oninput="salvarOrcamento(true)" onblur="orcFormatBRL(this)"
+          style="width:70px;text-align:right">
       </div>
-      <input type="number" class="orc-input auto" value="${realVal.toFixed(0)}" title="Custos reais Nibo ${MESES[i]}">
+      <input type="text" class="orc-input auto" value="${fmtBRL(realVal)}" title="Custos reais Nibo ${MESES[i]}" style="text-align:right">
       ${deltaHtml}
     </td>`;
   }
