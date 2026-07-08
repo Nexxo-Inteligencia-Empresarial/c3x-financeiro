@@ -1063,55 +1063,6 @@ async function niboGetAll(endpoint, params={}) {
 /* ═══════════════════════════════════════════
    CARREGAR DADOS DO NIBO
 ═══════════════════════════════════════════ */
-async function carregarEmpresaNibo() {
-  const ENDPOINTS = ['company', 'companies', 'account', 'profile'];
-  for (const ep of ENDPOINTS) {
-    try {
-      const data = await niboGet(ep);
-      console.log(`[Nibo empresa] /${ep} →`, JSON.stringify(data).substring(0, 500));
-
-      // Aceita resposta direta ou wrapped em items/data
-      const obj = Array.isArray(data) ? data[0] : (data.items?.[0] ?? data);
-      if (!obj || typeof obj !== 'object') continue;
-
-      const nome = obj.name || obj.companyName || obj.fantasyName || obj.tradeName || obj.businessName || null;
-      const logo = obj.logoUrl || obj.logo || obj.imageUrl || obj.avatarUrl || null;
-
-      if (!nome && !logo) { console.log(`[Nibo empresa] /${ep} sem name/logo — tentando próximo`); continue; }
-
-      if (nome) {
-        const el = document.getElementById('sidebar-company-name');
-        if (el) el.textContent = nome;
-        localStorage.setItem('c3x_empresa_nome', nome);
-        console.log('[Nibo empresa] nome encontrado:', nome);
-      }
-      if (logo) {
-        aplicarLogoEmpresa(logo);
-        localStorage.setItem('c3x_empresa_logo', logo);
-        console.log('[Nibo empresa] logo encontrada:', logo);
-      }
-      return; // sucesso — para de tentar
-    } catch(e) {
-      console.log(`[Nibo empresa] /${ep} falhou:`, e.message);
-    }
-  }
-  console.warn('[Nibo empresa] nenhum endpoint retornou dados — usando valores do cache ou padrão');
-  // Restaura do cache se disponível
-  const cachedNome = localStorage.getItem('c3x_empresa_nome');
-  const cachedLogo = localStorage.getItem('c3x_empresa_logo');
-  if (cachedNome) { const el = document.getElementById('sidebar-company-name'); if (el) el.textContent = cachedNome; }
-  if (cachedLogo) aplicarLogoEmpresa(cachedLogo);
-}
-
-function aplicarLogoEmpresa(url) {
-  const el = document.getElementById('sidebar-logo-mark');
-  if (!el) return;
-  const img = document.createElement('img');
-  img.src = url;
-  img.alt = 'Logo';
-  img.onerror = () => { /* mantém o SVG se a imagem falhar */ };
-  img.onload = () => { el.innerHTML = ''; el.appendChild(img); };
-}
 
 async function carregarCategoriasNibo() {
   try {
@@ -1415,8 +1366,8 @@ async function carregarNibo() {
   // A filtragem por paymentDate=ANO_FILTRO é feita no cliente (regime de caixa)
   const filtro = {'$orderby':'dueDate','$filter':`(year(dueDate) eq ${ANO_FILTRO} or year(dueDate) eq ${ANO_FILTRO-1} or year(dueDate) eq ${ANO_FILTRO-2})`};
 
-  loaderEl.textContent = 'Buscando dados da empresa...';
-  await Promise.allSettled([carregarEmpresaNibo(), carregarCategoriasNibo()]);
+  loaderEl.textContent = 'Buscando categorias...';
+  await carregarCategoriasNibo();
 
   loaderEl.textContent = 'Buscando receitas...';
   const creditData = await niboGetAll('schedules/credit', filtro);
