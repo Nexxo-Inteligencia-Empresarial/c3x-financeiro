@@ -875,34 +875,14 @@ tr:hover td { background: #f9fafb; }
 const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 const MESES_FULL = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
-const PROJ = {
-  receita:  [38441.72, 45325.72, 56441.72, 56350, 56350, 67466, 85466, 74350, 92350, 103466, 74350, 74350],
-  despesa:  [14065.95, 14690.01, 26310.95, 17790, 17790, 29410.93, 27155.93, 22535, 34280, 31900.93, 29535, 22535],
-  resultado:[23334.93, 30474.25, 29972.30, 37408.53, 38401.53, 37896.60, 57098.80, 52033.27, 58348.07, 70293.99, 45033.27, 52033.27],
-  escola:   [6975.72, 24975.72, 24975.72, 36000, 36000, 36000, 54000, 54000, 72000, 72000, 54000, 54000],
-  prime:    [20350, 20350, 20350, 20350, 20350, 20350, 20350, 20350, 20350, 20350, 20350, 20350],
-  destrava: [11116, 0, 11116, 0, 0, 11116, 11116, 0, 0, 11116, 0, 0],
-  alunos:   [21, 41, 41, 40, 40, 40, 60, 60, 80, 80, 60, 60],
-};
-const PROJ_CAT = {
-  'Adiantamento de Lucros':                        [0,0,0,0,0,0,0,0,0,0,0,0],
-  'Prestação de Serviço por Terceiros':            [2305,4805,4805,4805,4805,4805,4805,4805,4805,4805,4805,4805],
-  'Custo serviço prestado - mão de obra':          [2500,5000,5000,5000,5000,5000,5000,5000,5000,5000,5000,5000],
-  'Almoço / Jantar / Coffe Break':                 [500,500,500,500,500,500,500,500,500,500,500,500],
-  'Brinde - Eventos':                              [500,500,500,500,500,500,500,500,500,500,500,500],
-  'Dedução da Receita - Comissão (Escola de Sócios)':[400,800,800,800,800,800,800,800,800,800,800,800],
-  'Dedução da Receita - Comissão (Prime)':         [700,700,700,700,700,700,700,700,700,700,700,700],
-  'Gráfica':                                       [100,100,100,100,100,100,100,100,100,100,100,100],
-  'INSS / IRRF':                                   [259,259,259,259,259,259,259,259,259,259,259,259],
-  'Despesas com cobrança':                         [100,100,100,100,100,100,100,100,100,100,100,100],
-  'Sistemas':                                      [64,64,64,64,64,64,64,64,64,64,64,64],
-  'Dedução da Receita - Comissão (Destrava)':      [0,0,300,0,0,300,300,0,0,300,0,0],
-  'Trafego Pago':                                  [500,500,500,500,500,500,500,500,500,500,500,500],
-  'TFF':                                           [0,0,0,0,0,0,0,0,0,0,0,0],
-  'Impostos - DAS':                                [150,150,150,150,150,150,150,150,150,150,150,150],
-  'Transporte / Uber / Gasolina':                  [100,100,100,100,100,100,100,100,100,100,100,100],
-  'FGTS':                                          [65,65,65,65,65,65,65,65,65,65,65,65],
-  'Material de escritório':                        [50,50,50,50,50,50,50,50,50,50,50,50],
+let PROJ = {
+  receita:  Array(12).fill(0),
+  despesa:  Array(12).fill(0),
+  resultado:Array(12).fill(0),
+  escola:   Array(12).fill(0),
+  prime:    Array(12).fill(0),
+  destrava: Array(12).fill(0),
+  alunos:   Array(12).fill(0),
 };
 
 /* ═══════════════════════════════════════════
@@ -2727,6 +2707,7 @@ function renderFluxo() {
 function renderTudo() {
   // Salvar estado atual do orçamento antes de re-renderizar (evita perda ao trocar período/mês)
   if (ORC_ABA === '__geral__') salvarOrcGeral(true); else salvarOrcamento(true);
+  computarProjDeOrcamento();
   renderVisao();
   renderOpex();
   renderMensal();
@@ -4042,6 +4023,7 @@ function salvarOrcGeral(silent=false) {
   });
   localStorage.setItem('c3x_orc_geral_v1', JSON.stringify(data));
   atualizarTotaisOrcGeral(data);
+  computarProjDeOrcamento();
   if (!silent) {
     orcGeralParaKV(data);
     const msg = document.getElementById('orc-saved-msg');
@@ -4088,6 +4070,38 @@ function atualizarTotaisOrcGeral(vals) {
       td.innerHTML = `<span style="font-size:11px;font-weight:700;color:${res>=0?'#1d4ed8':'#dc2626'}">${fmtK(res)}</span>`;
     }
   });
+}
+
+function computarProjDeOrcamento() {
+  const plan = carregarOrcGeral();
+  if (!Object.keys(plan).length) return;
+
+  const secRec  = ORC_GERAL_SECOES.find(s => s.id === 'rec')?.cats  || [];
+  const secCus  = ORC_GERAL_SECOES.find(s => s.id === 'cus')?.cats  || [];
+  const secDesp = ORC_GERAL_SECOES.find(s => s.id === 'desp')?.cats || [];
+  const despCats = [...secCus, ...secDesp];
+
+  const escolaCats   = secRec.filter(c => /escola/i.test(c));
+  const primeCats    = secRec.filter(c => /prime/i.test(c));
+  const destravaCats = secRec.filter(c => /destrava|summit|c3x/i.test(c));
+  const soma = (cats, m) => cats.reduce((s, c) => s + ((plan[c] || [])[m] || 0), 0);
+
+  for (let m = 0; m < 12; m++) {
+    PROJ.receita[m]   = soma(secRec, m);
+    PROJ.despesa[m]   = soma(despCats, m);
+    PROJ.resultado[m] = PROJ.receita[m] - PROJ.despesa[m];
+    PROJ.escola[m]    = soma(escolaCats, m);
+    PROJ.prime[m]     = soma(primeCats, m);
+    PROJ.destrava[m]  = soma(destravaCats, m);
+  }
+
+  // alunos — "unidades" da aba CC da Escola
+  const ccOrc = carregarOrcamento();
+  const escolaKey = Object.keys(ccOrc).find(k => /escola/i.test(k));
+  if (escolaKey) {
+    const uni = ccOrc[escolaKey]?.unidades?.plan || Array(12).fill(0);
+    for (let m = 0; m < 12; m++) PROJ.alunos[m] = uni[m] || 0;
+  }
 }
 
 function renderOrcGeral() {
