@@ -478,7 +478,7 @@ tr:hover td { background: #f9fafb; }
         <div class="kpi-delta" id="kv-res-delta">—</div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label">Margem operacional</div>
+        <div class="kpi-label">Margem de contribuição</div>
         <div class="kpi-value" id="kv-marg-real">—</div>
         <span class="kpi-tag realized">realizado</span>
         <div class="kpi-proj" id="kv-marg-proj">Projetado: —</div>
@@ -962,6 +962,7 @@ let PROJ = {
   receita:  Array(12).fill(0),
   despesa:  Array(12).fill(0),
   resultado:Array(12).fill(0),
+  custo:    Array(12).fill(0),
   escola:   Array(12).fill(0),
   prime:    Array(12).fill(0),
   destrava: Array(12).fill(0),
@@ -2817,8 +2818,21 @@ function renderVisao() {
   const despProj = sumRange(PROJ.despesa, from, to);
   const resReal  = recReal - despReal;
   const resProj  = sumRange(PROJ.resultado, from, to);
-  const margReal = recReal>0 ? resReal/recReal : 0;
-  const margProj = recProj>0 ? resProj/recProj : 0;
+
+  // Margem de Contribuição = (Receita - Custo dos Serviços) / Receita
+  const cusCatsSet = new Set([
+    ...(ORC_GERAL_SECOES.find(s => s.id === 'cus')?.cats || []),
+    ...Object.keys(REAL.categorias || {}).filter(c => /dedução da receita|comissão/i.test(c)),
+  ]);
+  let custoReal = 0;
+  for (const [cat, arr] of Object.entries(REAL.categorias || {})) {
+    if (cusCatsSet.has(cat)) {
+      for (let m = from; m <= to; m++) custoReal += arr[m] || 0;
+    }
+  }
+  const custoProj = sumRange(PROJ.custo, from, to);
+  const margReal = recReal > 0 ? (recReal - custoReal) / recReal : 0;
+  const margProj = recProj > 0 ? (recProj - custoProj) / recProj : 0;
 
   const deltaRec  = recProj>0 ? (recReal-recProj)/recProj : 0;
   const deltaDesp = despProj>0 ? (despReal-despProj)/despProj : 0;
@@ -4286,10 +4300,15 @@ function computarProjDeOrcamento() {
   const despCats = Object.keys(plan).filter(c => despSet.has(c));
   const soma = (cats, m) => cats.reduce((s, c) => s + ((plan[c] || [])[m] || 0), 0);
 
+  // Categorias de custo dos serviços (para Margem de Contribuição)
+  const cusCatsHard = new Set(ORC_GERAL_SECOES.find(s => s.id === 'cus')?.cats || []);
+  const cusCats = despCats.filter(c => cusCatsHard.has(c) || /dedução da receita|comissão/i.test(c));
+
   for (let m = 0; m < 12; m++) {
     PROJ.receita[m]   = soma(recCats, m);
     PROJ.despesa[m]   = soma(despCats, m);
     PROJ.resultado[m] = PROJ.receita[m] - PROJ.despesa[m];
+    PROJ.custo[m]     = soma(cusCats, m);
     PROJ.escola[m]    = soma(recCats.filter(c => /escola/i.test(c)), m);
     PROJ.prime[m]     = soma(recCats.filter(c => /prime/i.test(c)), m);
     PROJ.destrava[m]  = soma(recCats.filter(c => /destrava|summit|c3x/i.test(c)), m);
