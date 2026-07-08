@@ -2868,7 +2868,18 @@ function renderVisao() {
     const recLiqProj = recProj - dedProj;
     margReal = recLiqReal > 0 ? (recLiqReal - custoReal) / recLiqReal : 0;
     margProj = recLiqProj > 0 ? (recLiqProj - custoProj) / recLiqProj : 0;
-    console.log('[Margem] recBruta', recBruta, 'recReal', recReal, 'dedReal', dedReal, 'recLiq', recBruta-dedReal, 'custoReal', custoReal, 'marg%', (margReal*100).toFixed(1), '_recCats', [..._recCats], '_recDedCats', [..._recDedCats]);
+    const recCatsReal = Object.keys(REAL.categoriasRec || {});
+    const notInRecCats = recCatsReal.filter(k => !_recCats.has(k));
+    const dedPorCat = {};
+    for (const [cat, arr] of Object.entries(REAL.categorias || {})) {
+      if (_recDedCats.has(cat)) dedPorCat[cat] = (arr || []).slice(0, 7).reduce((s,v)=>s+(v||0),0);
+    }
+    console.log('[Margem] recBruta', recBruta, 'recReal', recReal, 'dedReal', dedReal, 'recLiq', recBruta-dedReal, 'custoReal', custoReal, 'marg%', (margReal*100).toFixed(1));
+    console.log('[Margem] recCats(19):', [..._recCats].join(' | '));
+    console.log('[Margem] recDedCats(10):', [..._recDedCats].join(' | '));
+    console.log('[Margem] REAL.categoriasRec keys:', recCatsReal.join(' | '));
+    console.log('[Margem] notInRecCats (fallback trigger?):', notInRecCats.join(' | ') || 'NENHUM — todas as cats crédito estão em _recCats');
+    console.log('[Margem] dedPorCat YTD:', JSON.stringify(dedPorCat));
   } catch(e) {
     console.error('[Margem] erro no cálculo:', e);
     margReal = recReal > 0 ? (recReal - custoReal) / recReal : 0;
