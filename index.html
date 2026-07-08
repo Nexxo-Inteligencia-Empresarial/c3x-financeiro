@@ -4359,6 +4359,18 @@ function renderOrcGeral() {
       }
     }
 
+    // Forçar categorias de dedução/comissão para CUSTOS DOS SERVIÇOS,
+    // independente de qual seção Nibo as classifica
+    const dedRegex = /dedução da receita|comissão/i;
+    ['desp','outrec','ded','rec'].forEach(srcId => {
+      if (!byId[srcId]) return;
+      const toMove = byId[srcId].cats.filter(c => dedRegex.test(c));
+      toMove.forEach(c => {
+        byId[srcId].cats = byId[srcId].cats.filter(x => x !== c);
+        addCat('cus', c);
+      });
+    });
+
     const ORDER = ['rec','outrec','ded','cus','desp','inv'];
     // Garantir que todas as seções do ORDER existam em byId (evita que .filter(Boolean) remova outrec)
     ORDER.forEach(id => { if (!byId[id]) byId[id] = { ...DISPLAY_DEFS[id], cats: [] }; });
