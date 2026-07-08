@@ -2812,7 +2812,6 @@ function renderTudo() {
 }
 
 function renderVisao() {
-  console.log('[Margem] renderVisao iniciou');
   const [from, to] = periodoMeses();
   const recReal = sumRange(REAL.receita, from, to);
   const recProj = sumRange(PROJ.receita, from, to);
@@ -2821,70 +2820,49 @@ function renderVisao() {
   const resReal  = recReal - despReal;
   const resProj  = sumRange(PROJ.resultado, from, to);
 
-  let recBruta = 0, dedReal = 0, custoReal = 0;
-  let margReal = 0, margProj = 0;
-  try {
-    // Margem de Contribuição — replica fórmula exata do Nibo: (A+B)/A
-    // A = Receitas Operacionais líquidas (seções ^Receitas operacionais)
-    // B = Custos Operacionais (seções ^Custos operacionais)
-    const _cachedMarg = JSON.parse(localStorage.getItem('c3x_nibo_cats_v4') || '{"secoes":{}}');
-    const _secoesM    = _cachedMarg.secoes || {};
+  // Margem de Contribuição — fórmula Nibo (A+B)/A:
+  // A = Receitas Operacionais líquidas (créditos - deduções da receita)
+  // B = Custos Operacionais diretos
+  const _cachedMarg = JSON.parse(localStorage.getItem('c3x_nibo_cats_v4') || '{"secoes":{}}');
+  const _secoesM    = _cachedMarg.secoes || {};
+  const _recCats    = new Set();
+  const _recDedCats = new Set();
+  const _custoCats  = new Set();
 
-    const _recCats    = new Set();
-    const _recDedCats = new Set();
-    const _custoCats  = new Set();
-
-    for (const [nomeSec, info] of Object.entries(_secoesM)) {
-      if (!info || typeof info !== 'object') continue;
-      if (/^receitas operacionais/i.test(nomeSec)) {
-        (info.rec  || []).forEach(c => _recCats.add(c));
-        (info.desp || []).forEach(c => _recDedCats.add(c));
-      } else if (/^custos operacionais/i.test(nomeSec)) {
-        (info.desp || []).forEach(c => _custoCats.add(c));
-      }
+  for (const [nomeSec, info] of Object.entries(_secoesM)) {
+    if (!info || typeof info !== 'object') continue;
+    if (/^receitas operacionais/i.test(nomeSec)) {
+      (info.rec  || []).forEach(c => _recCats.add(c));
+      (info.desp || []).forEach(c => _recDedCats.add(c));
+    } else if (/^custos operacionais/i.test(nomeSec)) {
+      (info.desp || []).forEach(c => _custoCats.add(c));
     }
-
-    if (_custoCats.size === 0) DRE_CUSTOS_CATS.forEach(c => _custoCats.add(c));
-
-    for (const [cat, arr] of Object.entries(REAL.categoriasRec || {})) {
-      if (_recCats.has(cat)) {
-        for (let m = from; m <= to; m++) recBruta += arr[m] || 0;
-      }
-    }
-    if (recBruta === 0) recBruta = recReal;
-
-    for (const [cat, arr] of Object.entries(REAL.categorias || {})) {
-      const isDed   = _recDedCats.has(cat);
-      const isCusto = _custoCats.has(cat) && !isDed;
-      for (let m = from; m <= to; m++) {
-        if (isDed)        dedReal   += arr[m] || 0;
-        else if (isCusto) custoReal += arr[m] || 0;
-      }
-    }
-
-    const recLiqReal = recBruta - dedReal;
-    const dedProj    = sumRange(PROJ.ded,   from, to);
-    const custoProj  = sumRange(PROJ.custo, from, to);
-    const recLiqProj = recProj - dedProj;
-    margReal = recLiqReal > 0 ? (recLiqReal - custoReal) / recLiqReal : 0;
-    margProj = recLiqProj > 0 ? (recLiqProj - custoProj) / recLiqProj : 0;
-    const recCatsReal = Object.keys(REAL.categoriasRec || {});
-    const notInRecCats = recCatsReal.filter(k => !_recCats.has(k));
-    const dedPorCat = {};
-    for (const [cat, arr] of Object.entries(REAL.categorias || {})) {
-      if (_recDedCats.has(cat)) dedPorCat[cat] = (arr || []).slice(0, 7).reduce((s,v)=>s+(v||0),0);
-    }
-    console.log('[Margem] recBruta', recBruta, 'recReal', recReal, 'dedReal', dedReal, 'recLiq', recBruta-dedReal, 'custoReal', custoReal, 'marg%', (margReal*100).toFixed(1));
-    const recPorCat = {};
-    for (const [cat, arr] of Object.entries(REAL.categoriasRec || {})) {
-      recPorCat[cat] = (arr || []).slice(from, to+1).reduce((s,v)=>s+(v||0),0);
-    }
-    console.log('[Margem] recPorCat YTD:', JSON.stringify(recPorCat));
-    console.log('[Margem] dedPorCat YTD:', JSON.stringify(dedPorCat));
-  } catch(e) {
-    console.error('[Margem] erro no cálculo:', e);
-    margReal = recReal > 0 ? (recReal - custoReal) / recReal : 0;
   }
+  if (_custoCats.size === 0) DRE_CUSTOS_CATS.forEach(c => _custoCats.add(c));
+
+  let recBruta = 0, dedReal = 0, custoReal = 0;
+  for (const [cat, arr] of Object.entries(REAL.categoriasRec || {})) {
+    if (_recCats.has(cat) || _recCats.size === 0) {
+      for (let m = from; m <= to; m++) recBruta += arr[m] || 0;
+    }
+  }
+  if (recBruta === 0) recBruta = recReal;
+
+  for (const [cat, arr] of Object.entries(REAL.categorias || {})) {
+    const isDed   = _recDedCats.has(cat);
+    const isCusto = _custoCats.has(cat) && !isDed;
+    for (let m = from; m <= to; m++) {
+      if (isDed)        dedReal   += arr[m] || 0;
+      else if (isCusto) custoReal += arr[m] || 0;
+    }
+  }
+
+  const recLiqReal = recBruta - dedReal;
+  const dedProj    = sumRange(PROJ.ded,   from, to);
+  const custoProj  = sumRange(PROJ.custo, from, to);
+  const recLiqProj = recProj - dedProj;
+  const margReal = recLiqReal > 0 ? (recLiqReal - custoReal) / recLiqReal : 0;
+  const margProj = recLiqProj > 0 ? (recLiqProj - custoProj) / recLiqProj : 0;
 
   const deltaRec  = recProj>0 ? (recReal-recProj)/recProj : 0;
   const deltaDesp = despProj>0 ? (despReal-despProj)/despProj : 0;
