@@ -962,7 +962,8 @@ let PROJ = {
   receita:  Array(12).fill(0),
   despesa:  Array(12).fill(0),
   resultado:Array(12).fill(0),
-  custo:    Array(12).fill(0),
+  custo:    Array(12).fill(0), // custos diretos sem deduções (= Custos Operacionais Nibo)
+  ded:      Array(12).fill(0), // deduções da receita (comissões)
   escola:   Array(12).fill(0),
   prime:    Array(12).fill(0),
   destrava: Array(12).fill(0),
@@ -2819,17 +2820,24 @@ function renderVisao() {
   const resReal  = recReal - despReal;
   const resProj  = sumRange(PROJ.resultado, from, to);
 
-  // Margem de Contribuição = (Receita - Custo dos Serviços) / Receita
-  // DRE_CUSTOS_CATS espelha exatamente os "Custos Operacionais" do Nibo
-  let custoReal = 0;
+  // Margem de Contribuição — espelha fórmula do Nibo: (A+B)/A
+  // A = Receita Líquida (bruta - deduções), B = Custos Operacionais diretos
+  const dedRegexV = /dedução da receita|comissão/i;
+  let dedReal = 0, custoReal = 0;
   for (const [cat, arr] of Object.entries(REAL.categorias || {})) {
-    if (DRE_CUSTOS_CATS.has(cat) || /dedução da receita|comissão/i.test(cat)) {
-      for (let m = from; m <= to; m++) custoReal += arr[m] || 0;
+    const isDed   = dedRegexV.test(cat);
+    const isCusto = DRE_CUSTOS_CATS.has(cat) && !isDed;
+    for (let m = from; m <= to; m++) {
+      if (isDed)   dedReal   += arr[m] || 0;
+      else if (isCusto) custoReal += arr[m] || 0;
     }
   }
-  const custoProj = sumRange(PROJ.custo, from, to);
-  const margReal = recReal > 0 ? (recReal - custoReal) / recReal : 0;
-  const margProj = recProj > 0 ? (recProj - custoProj) / recProj : 0;
+  const recLiqReal = recReal - dedReal;           // = Nibo Receitas Operacionais
+  const dedProj    = sumRange(PROJ.ded,   from, to);
+  const custoProj  = sumRange(PROJ.custo, from, to);
+  const recLiqProj = recProj - dedProj;           // = Nibo Receitas Operacionais projetado
+  const margReal = recLiqReal > 0 ? (recLiqReal - custoReal) / recLiqReal : 0;
+  const margProj = recLiqProj > 0 ? (recLiqProj - custoProj) / recLiqProj : 0;
 
   const deltaRec  = recProj>0 ? (recReal-recProj)/recProj : 0;
   const deltaDesp = despProj>0 ? (despReal-despProj)/despProj : 0;
@@ -4297,15 +4305,19 @@ function computarProjDeOrcamento() {
   const despCats = Object.keys(plan).filter(c => despSet.has(c));
   const soma = (cats, m) => cats.reduce((s, c) => s + ((plan[c] || [])[m] || 0), 0);
 
-  // Categorias de custo dos serviços (para Margem de Contribuição)
-  // DRE_CUSTOS_CATS espelha os "Custos Operacionais" do Nibo (Comercial já incluído)
-  const cusCats = despCats.filter(c => DRE_CUSTOS_CATS.has(c) || /dedução da receita|comissão/i.test(c));
+  // Separar deduções de receita dos custos diretos — igual à lógica do Nibo:
+  // Nibo Receita Operacional = Receita Bruta - Deduções (líquida)
+  // Nibo Custos Operacionais = custos diretos SEM as deduções
+  const dedRegexProj = /dedução da receita|comissão/i;
+  const dedCats  = despCats.filter(c => dedRegexProj.test(c));
+  const cusCats  = despCats.filter(c => DRE_CUSTOS_CATS.has(c) && !dedRegexProj.test(c));
 
   for (let m = 0; m < 12; m++) {
     PROJ.receita[m]   = soma(recCats, m);
     PROJ.despesa[m]   = soma(despCats, m);
     PROJ.resultado[m] = PROJ.receita[m] - PROJ.despesa[m];
-    PROJ.custo[m]     = soma(cusCats, m);
+    PROJ.ded[m]       = soma(dedCats, m);  // deduções (reduz receita bruta → líquida)
+    PROJ.custo[m]     = soma(cusCats, m);  // custos diretos = Custos Operacionais Nibo
     PROJ.escola[m]    = soma(recCats.filter(c => /escola/i.test(c)), m);
     PROJ.prime[m]     = soma(recCats.filter(c => /prime/i.test(c)), m);
     PROJ.destrava[m]  = soma(recCats.filter(c => /destrava|summit|c3x/i.test(c)), m);
