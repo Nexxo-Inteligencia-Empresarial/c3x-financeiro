@@ -2821,23 +2821,37 @@ function renderVisao() {
   const resProj  = sumRange(PROJ.resultado, from, to);
 
   // Margem de Contribuição — espelha fórmula do Nibo: (A+B)/A
-  // A = Receita Líquida (bruta - deduções), B = Custos Operacionais diretos
-  const dedRegexV = /dedução da receita|comissão/i;
+  // Usa secoesAPI (nomes reais da API Nibo) para identificar categorias de custo
+  const _cachedMarg = JSON.parse(localStorage.getItem('c3x_nibo_cats_v4') || '{"secoes":{}}');
+  const _secoesM    = _cachedMarg.secoes || {};
+  const _custoCatNames = new Set();
+  for (const [nomeSec, info] of Object.entries(_secoesM)) {
+    if (/custo/i.test(nomeSec)) {
+      (info.desp || []).forEach(c => _custoCatNames.add(c));
+      (info.rec  || []).forEach(c => _custoCatNames.add(c));
+    }
+  }
+  if (_custoCatNames.size === 0) DRE_CUSTOS_CATS.forEach(c => _custoCatNames.add(c));
+
+  const _dedRegex = /dedução da receita|comissão/i;
   let dedReal = 0, custoReal = 0;
   for (const [cat, arr] of Object.entries(REAL.categorias || {})) {
-    const isDed   = dedRegexV.test(cat);
-    const isCusto = DRE_CUSTOS_CATS.has(cat) && !isDed;
+    const isDed   = _dedRegex.test(cat);
+    const isCusto = (_custoCatNames.has(cat) || DRE_CUSTOS_CATS.has(cat)) && !isDed;
     for (let m = from; m <= to; m++) {
-      if (isDed)   dedReal   += arr[m] || 0;
+      if (isDed)        dedReal   += arr[m] || 0;
       else if (isCusto) custoReal += arr[m] || 0;
     }
   }
-  const recLiqReal = recReal - dedReal;           // = Nibo Receitas Operacionais
+  const recLiqReal = recReal - dedReal;
   const dedProj    = sumRange(PROJ.ded,   from, to);
   const custoProj  = sumRange(PROJ.custo, from, to);
-  const recLiqProj = recProj - dedProj;           // = Nibo Receitas Operacionais projetado
+  const recLiqProj = recProj - dedProj;
   const margReal = recLiqReal > 0 ? (recLiqReal - custoReal) / recLiqReal : 0;
   const margProj = recLiqProj > 0 ? (recLiqProj - custoProj) / recLiqProj : 0;
+  console.log('[Margem] recReal', recReal, 'dedReal', dedReal, 'recLiq', recLiqReal, 'custoReal', custoReal, 'marg%', (margReal*100).toFixed(1));
+  console.log('[Margem] custoCatNames', [..._custoCatNames]);
+  console.log('[Margem] REAL.categorias keys', Object.keys(REAL.categorias||{}));
 
   const deltaRec  = recProj>0 ? (recReal-recProj)/recProj : 0;
   const deltaDesp = despProj>0 ? (despReal-despProj)/despProj : 0;
