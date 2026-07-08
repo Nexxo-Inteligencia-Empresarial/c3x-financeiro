@@ -2875,10 +2875,11 @@ function renderVisao() {
       if (_recDedCats.has(cat)) dedPorCat[cat] = (arr || []).slice(0, 7).reduce((s,v)=>s+(v||0),0);
     }
     console.log('[Margem] recBruta', recBruta, 'recReal', recReal, 'dedReal', dedReal, 'recLiq', recBruta-dedReal, 'custoReal', custoReal, 'marg%', (margReal*100).toFixed(1));
-    console.log('[Margem] recCats(19):', [..._recCats].join(' | '));
-    console.log('[Margem] recDedCats(10):', [..._recDedCats].join(' | '));
-    console.log('[Margem] REAL.categoriasRec keys:', recCatsReal.join(' | '));
-    console.log('[Margem] notInRecCats (fallback trigger?):', notInRecCats.join(' | ') || 'NENHUM — todas as cats crédito estão em _recCats');
+    const recPorCat = {};
+    for (const [cat, arr] of Object.entries(REAL.categoriasRec || {})) {
+      recPorCat[cat] = (arr || []).slice(from, to+1).reduce((s,v)=>s+(v||0),0);
+    }
+    console.log('[Margem] recPorCat YTD:', JSON.stringify(recPorCat));
     console.log('[Margem] dedPorCat YTD:', JSON.stringify(dedPorCat));
   } catch(e) {
     console.error('[Margem] erro no cálculo:', e);
