@@ -92,6 +92,29 @@ body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--tex
 .logout-btn { background: none; border: none; color: #6b7280; cursor: pointer; font-size: 11px; margin-top: 8px; padding: 0; }
 .logout-btn:hover { color: var(--red); }
 
+/* SIDEBAR COLLAPSE */
+#sidebar { transition: width 0.2s ease; }
+#main { transition: margin-left 0.2s ease; }
+#sidebar.collapsed { width: 56px; overflow-x: hidden; }
+#sidebar.collapsed .sidebar-logo-name,
+#sidebar.collapsed .sidebar-logo-sub,
+#sidebar.collapsed .sidebar-section,
+#sidebar.collapsed .sidebar-nav a span,
+#sidebar.collapsed .sidebar-user-name,
+#sidebar.collapsed .sidebar-user-role,
+#sidebar.collapsed .logout-btn { display: none; }
+#sidebar.collapsed .sidebar-logo { justify-content: center; padding: 1.25rem 0; }
+#sidebar.collapsed .sidebar-nav a { justify-content: center; padding: 10px 0; }
+#sidebar.collapsed .sidebar-sub a { padding-left: 0; }
+#sidebar.collapsed .sidebar-bottom { padding: 1rem 0.5rem; }
+#sidebar.collapsed .sidebar-user { justify-content: center; }
+.sidebar-toggle { display:flex;align-items:center;gap:8px;width:calc(100% - 12px);margin:0 6px 6px;padding:8px 12px;background:none;border:none;color:#6b7280;cursor:pointer;border-radius:7px;font-size:12px;font-family:'Inter',sans-serif;transition:all 0.15s;text-align:left; }
+.sidebar-toggle:hover { background:#1f2937;color:white; }
+.sidebar-toggle svg { width:16px;height:16px;fill:currentColor;flex-shrink:0;transition:transform 0.2s; }
+#sidebar.collapsed .sidebar-toggle { justify-content:center;padding:10px 0;margin:0 6px; }
+#sidebar.collapsed .sidebar-toggle span { display:none; }
+#sidebar.collapsed .sidebar-toggle svg { transform:rotate(180deg); }
+
 /* MAIN */
 #main { margin-left: var(--sidebar-w); flex: 1; display: none; flex-direction: column; min-height: 100vh; }
 
@@ -299,59 +322,63 @@ tr:hover td { background: #f9fafb; }
   </div>
   <div class="sidebar-section">Geral</div>
   <div class="sidebar-nav">
-    <a href="#" onclick="goPage('visao',this)" class="active">
+    <a href="#" onclick="goPage('visao',this)" class="active" title="Visão Executiva">
       <svg viewBox="0 0 24 24"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
-      Visão Executiva
+      <span>Visão Executiva</span>
     </a>
-    <a href="#" onclick="goPage('fluxo',this)">
+    <a href="#" onclick="goPage('fluxo',this)" title="Fluxo de Caixa">
       <svg viewBox="0 0 24 24"><path d="M3 18h6v-2H3v2zm0-5h12v-2H3v2zm0-7v2h18V6H3zm16 9.34c.87-.45 1.5-1.32 1.5-2.34C20.5 11.01 19.49 10 18.25 10H17V7l-3 3 3 3v-3h1.25c.55 0 1 .45 1 1s-.45 1-1 1H14v2h3.25c1.24 0 2.25-1.01 2.25-2.25 0-.91-.52-1.7-1.25-2.15V15.34z"/></svg>
-      Fluxo de Caixa
+      <span>Fluxo de Caixa</span>
     </a>
-    <a href="#" onclick="goPage('categorias',this)">
+    <a href="#" onclick="goPage('categorias',this)" title="Budget">
       <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-      Budget
+      <span>Budget</span>
     </a>
-    <a href="#" onclick="goPage('inadim',this)">
+    <a href="#" onclick="goPage('inadim',this)" title="Inadimplência">
       <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
-      Inadimplência
+      <span>Inadimplência</span>
     </a>
-    <a href="#" onclick="goPage('projecoes',this)">
+    <a href="#" onclick="goPage('projecoes',this)" title="Projeções">
       <svg viewBox="0 0 24 24"><path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z"/></svg>
-      Projeções
+      <span>Projeções</span>
     </a>
     <div class="sidebar-sub">
-      <a href="#" onclick="goPage('mensal',this)">
+      <a href="#" onclick="goPage('mensal',this)" title="Análise Mensal">
         <svg viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"/></svg>
-        Análise Mensal
+        <span>Análise Mensal</span>
       </a>
     </div>
-    <a href="#" onclick="goPage('diagnostico',this)">
+    <a href="#" onclick="goPage('diagnostico',this)" title="Insights">
       <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L12 14.17l7.59-7.59L21 8l-9 9z"/></svg>
-      Insights
+      <span>Insights</span>
     </a>
   </div>
   <div class="sidebar-section">Serviços</div>
   <div class="sidebar-nav">
-    <a href="#" onclick="goPage('servicos',this)">
+    <a href="#" onclick="goPage('servicos',this)" title="Visão por Serviço">
       <svg viewBox="0 0 24 24"><path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/></svg>
-      Visão por Serviço
+      <span>Visão por Serviço</span>
     </a>
   </div>
   <div class="sidebar-section">Sistema</div>
   <div class="sidebar-nav">
-    <a href="#" onclick="goPage('config',this)">
+    <a href="#" onclick="goPage('config',this)" title="KPIs">
       <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96a6.94 6.94 0 00-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 00-.59.22L2.74 8.87a.49.49 0 00.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.37 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.57 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.49.49 0 00-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
-      KPIs
+      <span>KPIs</span>
     </a>
-    <a href="#" onclick="goPage('orcamento',this)">
+    <a href="#" onclick="goPage('orcamento',this)" title="Orçamento">
       <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z"/></svg>
-      Orçamento
+      <span>Orçamento</span>
     </a>
-    <a href="#" onclick="goPage('integracao',this)" id="sidebar-integracao">
+    <a href="#" onclick="goPage('integracao',this)" id="sidebar-integracao" title="Integrações">
       <svg viewBox="0 0 24 24"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
-      Integrações
+      <span>Integrações</span>
     </a>
   </div>
+  <button class="sidebar-toggle" onclick="toggleSidebar()" title="Recolher menu">
+    <svg viewBox="0 0 24 24"><path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6z"/></svg>
+    <span>Recolher menu</span>
+  </button>
   <div class="sidebar-bottom">
     <div class="sidebar-user">
       <div class="sidebar-avatar">ER</div>
@@ -3823,6 +3850,7 @@ async function iniciar() {
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('sidebar').style.display = 'flex';
     document.getElementById('main').style.display = 'flex';
+    restaurarEstadoSidebar();
     const now = new Date();
     document.getElementById('topbar-updated').textContent = `Atualizado às ${now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
     iniciarAutoRefresh();
@@ -3850,15 +3878,32 @@ async function recarregar() {
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('sidebar').style.display = 'flex';
     document.getElementById('main').style.display = 'flex';
+    restaurarEstadoSidebar();
     document.getElementById('topbar-updated').textContent = `Atualizado às ${new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
   } catch(e) {
     console.error('Erro ao recarregar:', e);
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('sidebar').style.display = 'flex';
     document.getElementById('main').style.display = 'flex';
+    restaurarEstadoSidebar();
     const t = document.getElementById('topbar-updated');
     if (t) t.textContent = 'Erro ao atualizar — tente novamente';
     throw e;
+  }
+}
+
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const main    = document.getElementById('main');
+  const collapsed = sidebar.classList.toggle('collapsed');
+  main.style.marginLeft = collapsed ? '56px' : 'var(--sidebar-w)';
+  localStorage.setItem('c3x_sidebar_collapsed', collapsed ? '1' : '0');
+}
+
+function restaurarEstadoSidebar() {
+  if (localStorage.getItem('c3x_sidebar_collapsed') === '1') {
+    document.getElementById('sidebar').classList.add('collapsed');
+    document.getElementById('main').style.marginLeft = '56px';
   }
 }
 
