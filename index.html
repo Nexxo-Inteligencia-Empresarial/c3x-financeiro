@@ -4076,23 +4076,30 @@ function computarProjDeOrcamento() {
   const plan = carregarOrcGeral();
   if (!Object.keys(plan).length) return;
 
-  const secRec  = ORC_GERAL_SECOES.find(s => s.id === 'rec')?.cats  || [];
-  const secCus  = ORC_GERAL_SECOES.find(s => s.id === 'cus')?.cats  || [];
-  const secDesp = ORC_GERAL_SECOES.find(s => s.id === 'desp')?.cats || [];
-  const despCats = [...secCus, ...secDesp];
+  // c3x_nibo_cats_v4 tem cached.rec e cached.desp com os nomes reais das categorias Nibo —
+  // os mesmos nomes usados como chaves no budget. ORC_GERAL_SECOES é só fallback.
+  const cached = JSON.parse(localStorage.getItem('c3x_nibo_cats_v4') || '{"rec":[],"desp":[],"secoes":{}}');
 
-  const escolaCats   = secRec.filter(c => /escola/i.test(c));
-  const primeCats    = secRec.filter(c => /prime/i.test(c));
-  const destravaCats = secRec.filter(c => /destrava|summit|c3x/i.test(c));
+  const recSet  = new Set([...( cached.rec  || []), ...Object.keys(REAL.categoriasRec || {})]);
+  const despSet = new Set([...(cached.desp  || []), ...Object.keys(REAL.categorias   || {})]);
+
+  // fallback se o cache Nibo ainda não foi populado
+  if (!recSet.size && !despSet.size) {
+    ORC_GERAL_SECOES.filter(s => s.tipo === 'rec' ).flatMap(s => s.cats).forEach(c => recSet.add(c));
+    ORC_GERAL_SECOES.filter(s => s.tipo === 'desp').flatMap(s => s.cats).forEach(c => despSet.add(c));
+  }
+
+  const recCats  = Object.keys(plan).filter(c => recSet.has(c));
+  const despCats = Object.keys(plan).filter(c => despSet.has(c));
   const soma = (cats, m) => cats.reduce((s, c) => s + ((plan[c] || [])[m] || 0), 0);
 
   for (let m = 0; m < 12; m++) {
-    PROJ.receita[m]   = soma(secRec, m);
+    PROJ.receita[m]   = soma(recCats, m);
     PROJ.despesa[m]   = soma(despCats, m);
     PROJ.resultado[m] = PROJ.receita[m] - PROJ.despesa[m];
-    PROJ.escola[m]    = soma(escolaCats, m);
-    PROJ.prime[m]     = soma(primeCats, m);
-    PROJ.destrava[m]  = soma(destravaCats, m);
+    PROJ.escola[m]    = soma(recCats.filter(c => /escola/i.test(c)), m);
+    PROJ.prime[m]     = soma(recCats.filter(c => /prime/i.test(c)), m);
+    PROJ.destrava[m]  = soma(recCats.filter(c => /destrava|summit|c3x/i.test(c)), m);
   }
 
   // alunos — "unidades" da aba CC da Escola
