@@ -2844,6 +2844,17 @@ function renderVisao() {
   // Fallback se secoesAPI ainda não populado
   if (_custoCats.size === 0) DRE_CUSTOS_CATS.forEach(c => _custoCats.add(c));
 
+  // Gross receita = apenas categorias de crédito dentro de seções ^Receitas operacionais
+  // (REAL.receita inclui créditos de outras seções que Nibo exclui do RESULTADO FINANCEIRO)
+  let recBruta = 0;
+  for (const [cat, arr] of Object.entries(REAL.categoriasRec || {})) {
+    if (_recCats.has(cat)) {
+      for (let m = from; m <= to; m++) recBruta += arr[m] || 0;
+    }
+  }
+  // Se cache ainda não populado, usa recReal como fallback
+  if (recBruta === 0) recBruta = recReal;
+
   let dedReal = 0, custoReal = 0;
   for (const [cat, arr] of Object.entries(REAL.categorias || {})) {
     const isDed   = _recDedCats.has(cat);
@@ -2854,12 +2865,13 @@ function renderVisao() {
     }
   }
 
-  const recLiqReal = recReal - dedReal;            // = Nibo A
+  const recLiqReal = recBruta - dedReal;           // = Nibo A
   const dedProj    = sumRange(PROJ.ded,   from, to);
   const custoProj  = sumRange(PROJ.custo, from, to);
   const recLiqProj = recProj - dedProj;
   const margReal = recLiqReal > 0 ? (recLiqReal - custoReal) / recLiqReal : 0;
   const margProj = recLiqProj > 0 ? (recLiqProj - custoProj) / recLiqProj : 0;
+  console.log('[Margem] recBruta(recCats)', recBruta, 'recReal', recReal, 'dedReal', dedReal, 'recLiq', recLiqReal, 'custoReal', custoReal, 'marg%', (margReal*100).toFixed(1));
 
   const deltaRec  = recProj>0 ? (recReal-recProj)/recProj : 0;
   const deltaDesp = despProj>0 ? (despReal-despProj)/despProj : 0;
