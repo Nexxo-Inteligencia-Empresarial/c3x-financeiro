@@ -3762,53 +3762,22 @@ async function sincronizarOrcDeKV() {
   }
 }
 
-async function orcGeralParaKV(data) {
-  try {
-    await fetch('/api/kv?key=orc_geral', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-KV-Token': KV_TOKEN },
-      body: JSON.stringify(data)
-    });
-  } catch (e) {
-    console.warn('[KV] save falhou:', e.message);
-  }
+function _kvToken() { return KV_TOKEN || 'c3x-scraper-2026'; }
+
+async function _kvPost(key, data) {
+  const r = await fetch(`/api/kv?key=${key}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Nibo-Token': _kvToken() },
+    body: JSON.stringify(data)
+  });
+  if (!r.ok) console.warn(`[KV] POST ${key} retornou ${r.status}`);
+  return r.ok;
 }
 
-async function aparenciaParaKV(nome, logo) {
-  try {
-    await fetch('/api/kv?key=aparencia', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-KV-Token': KV_TOKEN },
-      body: JSON.stringify({ nome: nome || '', logo: logo || null })
-    });
-  } catch (e) {
-    console.warn('[KV] aparencia save falhou:', e.message);
-  }
-}
-
-async function configParaKV(data) {
-  try {
-    await fetch('/api/kv?key=config_kpis', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-KV-Token': KV_TOKEN },
-      body: JSON.stringify(data)
-    });
-  } catch (e) {
-    console.warn('[KV] config_kpis save falhou:', e.message);
-  }
-}
-
-async function orcamentoParaKV(data) {
-  try {
-    await fetch('/api/kv?key=orcamento_cc', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-KV-Token': KV_TOKEN },
-      body: JSON.stringify(data)
-    });
-  } catch (e) {
-    console.warn('[KV] orcamento_cc save falhou:', e.message);
-  }
-}
+async function orcGeralParaKV(data)        { try { await _kvPost('orc_geral',    data); } catch(e){ console.warn('[KV] orc_geral save:', e.message); } }
+async function aparenciaParaKV(nome, logo) { try { await _kvPost('aparencia',    { nome: nome||'', logo: logo||null }); } catch(e){ console.warn('[KV] aparencia save:', e.message); } }
+async function configParaKV(data)          { try { await _kvPost('config_kpis',  data); } catch(e){ console.warn('[KV] config_kpis save:', e.message); } }
+async function orcamentoParaKV(data)       { try { await _kvPost('orcamento_cc', data); } catch(e){ console.warn('[KV] orcamento_cc save:', e.message); } }
 
 function salvarOrcGeral(silent=false) {
   const inputs = document.querySelectorAll('.orc-geral-input');
