@@ -3534,7 +3534,9 @@ function toggleKpiInput(checkbox, cc) {
 
 function renderServicos() {
   const [from, to] = periodoMeses();
-  const ccsComMovimento = Object.keys(CC_DATA).filter(cc => sumRange(CC_DATA[cc].desp,from,to)>0);
+  const ccsComMovimento = Object.keys(CC_DATA).filter(cc =>
+    sumRange(CC_DATA[cc].desp,from,to)>0 || (CC_RECEITA[cc] && sumRange(CC_RECEITA[cc],from,to)>0)
+  );
   const colors = ['var(--green)','var(--blue)','var(--amber)','#8b5cf6','#ec4899','#06b6d4','#f97316','#14b8a6'];
 
   if (ccsComMovimento.length === 0) {
@@ -4806,8 +4808,12 @@ function renderOrcTabela(cc) {
               ${MESES.map(m => `<th class="th-mes" colspan="1">${m}</th>`).join('')}
             </tr>
             <tr>
-              <th class="th-kpi" style="font-size:10px;color:var(--text2)">Linha / P=Plan R=Real</th>
-              ${MESES.map(() => `<th class="th-mes" style="font-size:9px;color:#15803d">P&nbsp;&nbsp;&nbsp;R</th>`).join('')}
+              <th class="th-kpi" style="font-size:10px;color:var(--text2)">
+                <span style="background:#f0fdf8;color:#15803d;padding:1px 5px;border-radius:3px;border:1px solid #bbf7d0">P</span> Meta
+                &nbsp;
+                <span style="background:#eff6ff;color:#1d4ed8;padding:1px 5px;border-radius:3px;border:1px solid #bfdbfe;font-weight:700">R</span> <b>Realizado ← KPI cards usam este</b>
+              </th>
+              ${MESES.map(() => `<th class="th-mes" style="font-size:9px"><span style="color:#15803d">P</span>&nbsp;<span style="color:#1d4ed8;font-weight:700">R</span></th>`).join('')}
             </tr>
           </thead>
           <tbody>
