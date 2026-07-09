@@ -1144,7 +1144,7 @@ async function carregarDadosKV() {
     }
   }
 
-  if (!window.ehInvestimento) window.ehInvestimento = cat => /adiantamento de lucros|equipamentos|utensílio|acerto de contas|estorno|reversão|dedução da receita|deducao da receita/i.test(cat);
+  if (!window.ehInvestimento) window.ehInvestimento = cat => /adiantamento de lucros|equipamentos|utensílio|acerto de contas|estorno|reversão/i.test(cat);
 
   // REGIME DE CAIXA — despesas
   for (const item of RAW_DEBITS) {
