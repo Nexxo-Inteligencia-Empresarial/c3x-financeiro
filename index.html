@@ -3099,7 +3099,8 @@ function renderServicos() {
   const prevTo   = to   - delta;
   const hasPrev  = prevFrom >= 0;
 
-  document.getElementById('service-grid').innerHTML = ccsComMovimento.map((cc,idx)=>{
+  const grid = document.getElementById('service-grid');
+  grid.innerHTML = ccsComMovimento.map((cc,idx)=>{
     const desp    = sumRange(CC_DATA[cc].desp, from, to);
     const rec     = CC_RECEITA[cc] ? sumRange(CC_RECEITA[cc], from, to) : 0;
     const prevRec = hasPrev && CC_RECEITA[cc] ? sumRange(CC_RECEITA[cc], prevFrom, prevTo) : 0;
@@ -3109,7 +3110,8 @@ function renderServicos() {
     const recDeltaHtml = dp !== null
       ? `<div class="service-row"><span style="font-size:11px;color:var(--text2)">vs período anterior</span><span style="font-size:11px;font-weight:700;color:${dp>=0?'var(--green)':'var(--red)'}">${dp>=0?'+':''}${(dp*100).toFixed(1)}%</span></div>`
       : '';
-    return `<div class="service-card" onclick="abrirCC('${cc.replace(/'/g, "\\'")}')">
+    const ccEsc = cc.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+    return `<div class="service-card" data-cc="${ccEsc}">
       <div style="width:32px;height:4px;border-radius:2px;background:${cor};margin-bottom:12px"></div>
       <div class="service-name">${cc}</div>
       <div class="service-label">Despesa realizada</div>
@@ -3123,10 +3125,23 @@ function renderServicos() {
       ${CC_INADIM[cc]&&CC_INADIM[cc].total>0?`<div class="service-row"><span style="font-size:12px;color:var(--text2)">Inadimplência</span><span style="font-size:12px;font-weight:600;color:var(--red)">⚠️ ${fmtK(sumRange(CC_INADIM[cc].porMes,from,to))}</span></div>`:''}
     </div>`;
   }).join('');
+
+  // Event delegation — evita problemas de encoding em nomes de CC com caracteres especiais
+  grid._ccHandler && grid.removeEventListener('click', grid._ccHandler);
+  grid._ccHandler = (e) => {
+    const card = e.target.closest('[data-cc]');
+    if (card) abrirCC(card.dataset.cc);
+  };
+  grid.addEventListener('click', grid._ccHandler);
 }
 
 function abrirCC(cc) {
-  console.error(`[abrirCC] cc="${cc}"`);
+  try { _abrirCC(cc); } catch(err) {
+    console.error('[abrirCC] erro:', err);
+    alert('Erro ao abrir serviço "' + cc + '": ' + err.message);
+  }
+}
+function _abrirCC(cc) {
   const [from, to] = periodoMeses();
   const config = carregarConfig();
   const kpisSel = config.ccKpis[cc] || [];
