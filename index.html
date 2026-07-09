@@ -3220,13 +3220,24 @@ function abrirCC(cc) {
 
   // KPIs calculados
   const margemCalc  = rec > 0      ? (rec - desp) / rec * 100       : null;
-  const arpu        = unidades > 0 ? recTotal / unidades             : null;
   const inadim_pct  = recTotal > 0 ? inadim / recTotal * 100         : null;
   const ating_meta  = meta_rec > 0 ? recTotal / meta_rec * 100       : null;
-  const ticket      = unidades > 0 ? recTotal / unidades             : null;
   const cac         = novos > 0    ? desp / novos                    : null;
   const roi         = desp > 0     ? res / desp * 100                : null;
-  const mrr_churn   = churnVal !== null && unidades > 0 ? churnVal * (recTotal / unidades) : null;
+
+  // Ticket Médio: média dos tickets mensais (receita_mês / clientes_mês) → correto para YTD
+  const _recMes = CC_RECEITA[cc] || Array(12).fill(0);
+  let _ticketSum = 0, _ticketCount = 0;
+  for (let m = from; m <= to; m++) {
+    if ((_unidSrc[m] || 0) > 0 && (_recMes[m] || 0) > 0) {
+      _ticketSum += _recMes[m] / _unidSrc[m];
+      _ticketCount++;
+    }
+  }
+  const ticket = _ticketCount > 0 ? _ticketSum / _ticketCount : null;
+
+  const arpu      = unidades > 0 ? recTotal / unidades             : null;
+  const mrr_churn = churnVal !== null && ticket !== null ? churnVal * ticket : null;
 
   const kpiCard = (label, value, sub, cor, full=false) =>
     `<div class="kpi-card"${full?' style="grid-column:1/-1;max-width:280px"':''}>
