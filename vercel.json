@@ -1,6 +1,5 @@
 {
   "rewrites": [
-    { "source": "/api/nibo/:path*", "destination": "/api/nibo" },
-    { "source": "/api/asaas/:path*", "destination": "/api/asaas" }
+    { "source": "/api/kv/:path*", "destination": "/api/kv" }
   ]
 }

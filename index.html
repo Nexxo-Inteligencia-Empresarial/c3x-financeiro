@@ -288,28 +288,25 @@ tr:hover td { background: #f9fafb; }
 </head>
 <body>
 
-<!-- SETUP -->
-<div id="setup-screen">
+<!-- SETUP (erro de carregamento) -->
+<div id="setup-screen" style="display:none">
   <div class="setup-card">
     <div class="setup-logo">
       <div class="setup-logo-mark"><svg viewBox="0 0 24 24"><path d="M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm14 3a4 4 0 100-8 4 4 0 000 8z"/></svg></div>
       <div class="setup-logo-name">C3X Financeiro</div>
     </div>
-    <h1 class="setup-title">Conectar ao Nibo</h1>
-    <p class="setup-sub">Cole seu token de API para carregar os dados em tempo real.</p>
-    <label class="setup-label" for="token-input">API Token</label>
-    <input class="setup-input" id="token-input" type="password" placeholder="Cole o token aqui" autocomplete="off"/>
-    <p class="setup-hint">Encontre em: <b>Empresa → Configurações → API</b></p>
-    <div class="setup-error" id="setup-error">Token inválido. Verifique e tente novamente.</div>
-    <div class="setup-error" id="setup-error-detail" style="margin-top:6px;font-size:11px;word-break:break-all"></div>
-    <button class="setup-btn" onclick="conectar()">Conectar e carregar dados →</button>
+    <h1 class="setup-title">Sem dados disponíveis</h1>
+    <p class="setup-sub">Nenhum dado foi encontrado. Peça ao Claude para raspar o Nibo e salvar os dados.</p>
+    <div class="setup-error" id="setup-error" style="display:block">Erro ao carregar dados.</div>
+    <div class="setup-error" id="setup-error-detail" style="margin-top:6px;font-size:11px;word-break:break-all;display:none"></div>
+    <button class="setup-btn" onclick="iniciar()">Tentar novamente →</button>
   </div>
 </div>
 
 <!-- LOADING -->
 <div id="loading-screen">
   <div class="loader"></div>
-  <div class="loader-label" id="loader-label">Conectando ao Nibo...</div>
+  <div class="loader-label" id="loader-label">Carregando dados...</div>
 </div>
 
 <!-- SIDEBAR -->
@@ -839,57 +836,48 @@ tr:hover td { background: #f9fafb; }
       <p class="page-sub">Gerencie as chaves de API das integrações do dashboard. Os tokens ficam salvos apenas no seu navegador.</p>
     </div>
 
-    <!-- Nibo -->
+    <!-- Nibo (dados via scraper) -->
     <div class="table-card" style="margin-bottom:1.5rem;max-width:640px">
       <div class="table-header">
         <div>
           <div class="table-title" style="display:flex;align-items:center;gap:10px">
             <svg viewBox="0 0 24 24" width="18" height="18" style="fill:var(--blue);flex-shrink:0"><path d="M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm14 3a4 4 0 100-8 4 4 0 000 8z"/></svg>
-            Nibo
+            Nibo (Scraper)
           </div>
-          <div class="table-sub">Token de acesso à API pública do Nibo (schedules, contas, categorias)</div>
+          <div class="table-sub">Dados coletados pelo Claude via Playwright e salvos no KV</div>
         </div>
-        <div id="integ-nibo-badge" style="font-size:12px;font-weight:600;padding:4px 10px;border-radius:20px;background:#dcfce7;color:#16a34a">● Conectado</div>
+        <div id="integ-nibo-badge" style="font-size:12px;font-weight:600;padding:4px 10px;border-radius:20px;background:#dcfce7;color:#16a34a">● Ativo</div>
       </div>
       <div style="padding:1.25rem">
-        <label style="font-size:12px;font-weight:600;color:var(--text2);display:block;margin-bottom:6px">API Token</label>
-        <div style="display:flex;gap:8px">
-          <input id="integ-nibo-input" type="password" placeholder="Cole o novo token aqui" autocomplete="off"
-            style="flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:monospace">
-          <button onclick="integSalvarNibo()"
-            style="padding:9px 20px;background:var(--blue);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">
-            Salvar e reconectar
-          </button>
-        </div>
-        <p style="font-size:12px;color:var(--text2);margin:8px 0 0">Encontre em: <strong>Nibo → Empresa → Configurações → API</strong></p>
-        <p id="integ-nibo-status" style="font-size:12px;min-height:16px;margin:6px 0 0"></p>
+        <p id="integ-nibo-status" style="font-size:13px;color:var(--text2);margin:0 0 12px">Peça ao Claude para raspar o Nibo e atualizar os dados no KV.</p>
+        <button onclick="recarregar()"
+          style="padding:9px 20px;background:var(--blue);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">
+          Recarregar dados do KV
+        </button>
       </div>
     </div>
 
-    <!-- Asaas -->
+    <!-- Senha de escrita KV -->
     <div class="table-card" style="max-width:640px;margin-bottom:1.5rem">
       <div class="table-header">
         <div>
           <div class="table-title" style="display:flex;align-items:center;gap:10px">
-            <svg viewBox="0 0 24 24" width="18" height="18" style="fill:var(--green);flex-shrink:0"><path d="M20 4H4c-1.11 0-2 .89-2 2v12c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z"/></svg>
-            Asaas
+            <svg viewBox="0 0 24 24" width="18" height="18" style="fill:var(--amber);flex-shrink:0"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>
+            Senha de escrita (KV)
           </div>
-          <div class="table-sub">Token para buscar datas reais de recebimento e corrigir regime de caixa (+R$786)</div>
+          <div class="table-sub">Necessária para salvar orçamento e configurações</div>
         </div>
-        <div id="integ-asaas-badge" style="font-size:12px;font-weight:600;padding:4px 10px;border-radius:20px;background:#f3f4f6;color:#6b7280">● Não configurado</div>
       </div>
       <div style="padding:1.25rem">
-        <label style="font-size:12px;font-weight:600;color:var(--text2);display:block;margin-bottom:6px">Access Token</label>
         <div style="display:flex;gap:8px">
-          <input id="integ-asaas-input" type="password" placeholder="$aact_..." autocomplete="off"
+          <input id="integ-kv-input" type="password" placeholder="Token KV_WRITE_TOKEN do Vercel" autocomplete="off"
             style="flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:monospace">
-          <button onclick="integSalvarAsaas()"
-            style="padding:9px 20px;background:var(--green);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">
-            Salvar e testar
+          <button onclick="integSalvarKVToken()"
+            style="padding:9px 20px;background:var(--amber);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">
+            Salvar
           </button>
         </div>
-        <p style="font-size:12px;color:var(--text2);margin:8px 0 0">Peça ao admin da conta Asaas: <strong>Configurações → Integrações → API → Gerar nova chave</strong></p>
-        <p id="integ-asaas-status" style="font-size:12px;min-height:16px;margin:6px 0 0"></p>
+        <p id="integ-kv-status" style="font-size:12px;min-height:16px;margin:6px 0 0"></p>
       </div>
     </div>
 
@@ -969,27 +957,12 @@ let PROJ = {
 };
 
 /* ═══════════════════════════════════════════
-   DADOS REALIZADOS (do Nibo via API)
+   DADOS REALIZADOS (scraped via KV)
 ═══════════════════════════════════════════ */
 let RAW_CREDITS = [];
 let RAW_DEBITS  = [];
-let RAW_ENTRIES = [];         // movimentos bancários reais (entries) — se disponível via API
-let SALDO_ASAAS_ATUAL = null;      // saldo atual da conta Recebimentos Asaas (via accounts API)
-let ASAAS_RECEBIDOS_ANO = null;    // total recebido no ANO_FILTRO por paymentDate (via Asaas API)
-let ASAAS_TRANSFERIDOS_ANO = null; // total transferido para fora no ANO_FILTRO (via Asaas API)
-let SALDO_INICIAL_2026 = 0;        // saldo de abertura em 01/Jan (calculado via Asaas)
-let ASAAS_MAP = {};                // scheduleId → paymentDate real (via Asaas API)
-let ASAAS_TAXAS_LIST = [];         // [{date, valor}] taxas Asaas (value − netValue) por recebimento
-let ASAAS_ENTRADAS_LIST = [];      // [{date, valor, desc, stakeholder}] recebimentos realizados (netValue)
-let ASAAS_SAIDAS_LIST = [];        // [{date, valor, desc, stakeholder, tipo}] bill-payment + transfers
-let ASAAS_MOVIMENTOS_LIST = [];    // [{date, valor, tipo:'entrada'|'saida', desc}] extrato completo (financialTransactions)
 
-// Saldo Asaas verificado em 01/Jan de cada ano (para KPI)
-const ASAAS_SALDO_ABERTURA = {
-  2026: 24427.12,
-};
-
-// Âncoras mensais verificados no extrato Asaas.
+// Âncoras mensais de saldo verificadas no extrato.
 // Chave = mês 1-based (1=Jan…12=Dez) = abertura daquele mês = fechamento verificado do mês anterior.
 // Necessário porque o Nibo (schedules/debit) não captura todas as saídas da conta Asaas.
 // Atualizar após confirmar cada fechamento mensal.
@@ -1008,13 +981,10 @@ const SALDO_ABERTURA_MENSAL = {
   }
 };
 
-// Regime de caixa: data de recebimento.
-// Prioridade: ASAAS_MAP[scheduleId] > paymentDate > dueDate > scheduleDate
 function _dataCaixa(item) {
   if (item.isEntry === true) return item.dueDate || item.scheduleDate || '';
   if (item.isPaid === true) {
-    const asaasDate = item.scheduleId ? ASAAS_MAP[item.scheduleId] : null;
-    return asaasDate || item.paymentDate || item.dueDate || item.scheduleDate || '';
+    return item.paymentDate || item.dueDate || item.scheduleDate || '';
   }
   return item.dueDate || item.scheduleDate || '';
 }
@@ -1035,8 +1005,8 @@ let REAL = {
 // Período selecionado
 let PERIODO = 'ytd';
 let MES_FILTRO  = -1;   // -1 = sem filtro de mês específico
-let ANO_FILTRO  = 2026; // ano exibido — muda filtro API + processamento cliente
-let TOKEN = '';
+let ANO_FILTRO  = 2026;
+let KV_TOKEN = localStorage.getItem('c3x_kv_token') || '';
 const charts = {};
 
 /* ═══════════════════════════════════════════
@@ -1089,65 +1059,41 @@ const barOpts = (yFmt) => ({
 });
 
 /* ═══════════════════════════════════════════
-   API
+   CARREGAR DADOS DO KV (scraped Nibo)
 ═══════════════════════════════════════════ */
-async function niboGet(endpoint, extra={}) {
-  let qs = `endpoint=${encodeURIComponent(endpoint)}`;
-  for (const [k,v] of Object.entries(extra)) qs += `&${encodeURIComponent(k)}=${encodeURIComponent(v)}`;
-  const r = await fetch(`/api/nibo?${qs}`, { headers: { 'X-Nibo-Token': TOKEN } });
-  if (!r.ok) throw new Error(`Erro ${r.status}`);
-  return r.json();
-}
 
-// Busca todas as páginas de um endpoint usando $skip (paginação automática)
-async function niboGetAll(endpoint, params={}) {
-  const PAGE = 500;
-  let allItems = [];
-  let skip = 0;
-  while (true) {
-    const data = await niboGet(endpoint, { ...params, '$top': String(PAGE), '$skip': String(skip) });
-    const items = data.items || [];
-    allItems = allItems.concat(items);
-    if (items.length < PAGE) break; // última página
-    skip += PAGE;
-    if (skip > 9500) break; // limite de segurança: 10.000 registros
+async function carregarDadosKV() {
+  const loaderEl = document.getElementById('loader-label');
+  loaderEl.textContent = 'Carregando dados do Nibo...';
+
+  const r = await fetch('/api/kv?key=nibo_data');
+  if (!r.ok) throw new Error('Erro ao acessar base de dados. Verifique a conexão.');
+  const { value } = await r.json();
+
+  if (!value || (!value.credits && !value.debits)) {
+    throw new Error('Nenhum dado encontrado. Peça ao Claude para raspar o Nibo e salvar os dados no KV.');
   }
-  return { items: allItems };
-}
 
-/* ═══════════════════════════════════════════
-   CARREGAR DADOS DO NIBO
-═══════════════════════════════════════════ */
+  RAW_CREDITS = value.credits || [];
+  RAW_DEBITS  = value.debits  || [];
+  console.log('[KV] créditos:', RAW_CREDITS.length, '| débitos:', RAW_DEBITS.length, '| atualizado:', value.updatedAt || '?');
 
-async function carregarCategoriasNibo() {
-  try {
-    const data = await niboGet('categories');
-    const items = data.items || data || [];
-    console.log('[Nibo cats] total itens:', items.length);
-    if (!Array.isArray(items) || items.length === 0) return;
-
-    // Log da estrutura bruta do primeiro item para diagnóstico
-    console.log('[Nibo cats] sample item keys:', Object.keys(items[0] || {}));
-    console.log('[Nibo cats] sample item:', JSON.stringify(items[0]));
-
-    const rec = [], desp = [];
-    const secoes = {};
-
-    for (const cat of items) {
+  // Processar categorias se disponíveis no snapshot
+  const catItems = value.categories || [];
+  if (catItems.length > 0) {
+    const rec = [], desp = [], secoes = {};
+    for (const cat of catItems) {
       const nome = (cat.name || cat.categoryName || cat.description || '').trim();
       if (!nome) continue;
       const tipoRaw = cat.tipo || cat.categoryType || cat.type || '';
       const isRec = tipoRaw === 1 || String(tipoRaw).toLowerCase() === 'in' || String(tipoRaw).toLowerCase() === 'credit';
-
       if (isRec) rec.push(nome); else desp.push(nome);
-
       const parentRaw = cat.parentCategory || cat.parent || cat.parentGroup || cat.group || cat.section || null;
       const secNomeBase = parentRaw
         ? (typeof parentRaw === 'object' ? (parentRaw.name || parentRaw.categoryName || '') : String(parentRaw))
         : '';
-      // Usa group + subgroup como chave para granularidade: "Receitas operacionais / Outras receitas"
       const subGrupo = (cat.subgroupName || cat.subgroupDescription || '').trim();
-      const secNome = secNomeBase.trim();
+      const secNome  = secNomeBase.trim();
       if (secNome) {
         const k = subGrupo ? `${secNome} / ${subGrupo}` : secNome;
         if (!secoes[k]) secoes[k] = { rec: [], desp: [] };
@@ -1155,310 +1101,14 @@ async function carregarCategoriasNibo() {
         if (!arr.includes(nome)) arr.push(nome);
       }
     }
-
     localStorage.setItem('c3x_nibo_cats_v4', JSON.stringify({ rec, desp, secoes }));
-    const nSecs = Object.keys(secoes).length;
-    console.log(`[Nibo cats] seções encontradas: ${nSecs}`);
-    console.log('[Nibo cats] seções:', Object.keys(secoes).map(s => `"${s}" rec:${secoes[s].rec.length} desp:${secoes[s].desp.length}`).join('\n  '));
-  } catch(e) {
-    console.warn('[Nibo cats] ERRO na API de categorias:', e.message, e);
-  }
-}
-
-// Busca todos os pagamentos RECEIVED desde 2 anos atrás para popular ASAAS_MAP.
-// Inclui pagamentos no mesmo mês (não só cross-mês) pois precisamos do paymentDate
-// para itens Nibo com dueDate em anos anteriores (2024/2025) pagos no ANO_FILTRO.
-async function carregarAsaasMap(asaasToken) {
-  const LIMIT = 100;
-  let offset = 0;
-  const startYear = ANO_FILTRO - 2;
-  const hoje = new Date();
-  const hojeFmt = String(ANO_FILTRO) + '-' +
-    String(hoje.getMonth() + 1).padStart(2, '0') + '-' +
-    String(hoje.getDate()).padStart(2, '0');
-  const dvList = [];
-
-  while (true) {
-    const params = new URLSearchParams({
-      endpoint: 'payments',
-      status: 'RECEIVED',
-      'dueDate[ge]': `${startYear}-01-01`,
-      'dueDate[le]': hojeFmt,
-      limit: LIMIT,
-      offset,
-    });
-
-    const resp = await fetch(`/api/asaas?${params}`, { headers: { 'X-Asaas-Token': asaasToken } });
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(`Asaas HTTP ${resp.status}: ${err.error || JSON.stringify(err).slice(0, 120)}`);
-    }
-    const data = await resp.json();
-
-    for (const p of (data.data || [])) {
-      if (!p.dueDate || !p.paymentDate || p.value == null) continue;
-      dvList.push({
-        dueDate:     String(p.dueDate).slice(0, 10),
-        value:       parseFloat(p.value),
-        paymentDate: p.paymentDate,
-      });
-    }
-
-    if (!data.hasMore) break;
-    offset += LIMIT;
-    if (offset > 9900) break;
   }
 
-  console.log('[Asaas] Payments para ASAAS_MAP: ' + dvList.length + ' itens (dueDate >= ' + startYear + ')');
-  return dvList;
-}
+  loaderEl.textContent = 'Processando centros de custo...';
+  await carregarCentrosCusto({ items: RAW_CREDITS }, { items: RAW_DEBITS });
 
-// Matching melhorado: asaas_value >= nibo_value (multas só adicionam), tolerância ≤10%,
-// escolhe o candidato com menor diferença de valor (não o primeiro encontrado).
-function enriquecerAsaasMapFallback(dvList) {
-  let matched = 0;
-  const available = dvList.slice();
+  loaderEl.textContent = 'Processando receitas...';
 
-  for (const item of RAW_CREDITS) {
-    if (!item.isPaid || item.isEntry || !item.scheduleId) continue;
-    if (ASAAS_MAP[item.scheduleId]) continue;
-    if (!item.dueDate || item.value == null) continue;
-    const dNorm = String(item.dueDate).slice(0, 10);
-    const niboVal = parseFloat(item.value);
-
-    let bestIdx = -1;
-    let bestDiff = Infinity;
-    for (let i = 0; i < available.length; i++) {
-      const p = available[i];
-      if (p.dueDate !== dNorm) continue;
-      const diff = p.value - niboVal;
-      if (diff < 0) continue;                     // Asaas nunca pode ser menor que Nibo
-      if (diff / niboVal > 0.10) continue;         // tolera até 10% de multa/juros
-      if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
-    }
-
-    if (bestIdx >= 0) {
-      ASAAS_MAP[item.scheduleId] = available[bestIdx].paymentDate;
-      available.splice(bestIdx, 1);
-      matched++;
-    }
-  }
-  console.log('[Asaas] ASAAS_MAP: ' + matched + ' itens com paymentDate corrigido');
-}
-
-// Busca saldo atual + movimentos realizados do ANO_FILTRO da API Asaas.
-// Entradas: /payments?status=RECEIVED (netValue)
-// Saídas:   /transfers?status=DONE + /bill-payment?status=DONE
-async function carregarAsaasSaldos(asaasToken) {
-  const hoje = new Date();
-  const anoFmt = String(ANO_FILTRO);
-  const hojeFmt = anoFmt + '-' +
-    String(hoje.getMonth() + 1).padStart(2, '0') + '-' +
-    String(hoje.getDate()).padStart(2, '0');
-  const limFmt = hoje.getFullYear() === ANO_FILTRO ? hojeFmt : `${anoFmt}-12-31`;
-
-  try {
-    // 1. Saldo atual
-    const r1 = await fetch(`/api/asaas?${new URLSearchParams({ endpoint: 'finance/balance' })}`,
-      { headers: { 'X-Asaas-Token': asaasToken } });
-    if (r1.ok) {
-      const d1 = await r1.json();
-      if (d1.balance != null) SALDO_ASAAS_ATUAL = parseFloat(d1.balance);
-    }
-
-    // 2. Pagamentos recebidos — monta ASAAS_ENTRADAS_LIST com netValue por item
-    let recebidos = 0, off2 = 0;
-    const taxasList = [], entradasList = [];
-    while (true) {
-      const p2 = new URLSearchParams({
-        endpoint: 'payments', status: 'RECEIVED',
-        'paymentDate[ge]': `${anoFmt}-01-01`,
-        'paymentDate[le]': limFmt,
-        limit: 100, offset: off2,
-      });
-      const r2 = await fetch(`/api/asaas?${p2}`, { headers: { 'X-Asaas-Token': asaasToken } });
-      if (!r2.ok) break;
-      const d2 = await r2.json();
-      for (const it of (d2.data || [])) {
-        const v  = parseFloat(it.value    ?? 0);
-        const nv = parseFloat(it.netValue ?? it.value ?? 0);
-        recebidos += nv;
-        const taxa = v - nv;
-        if (taxa > 0 && it.paymentDate) taxasList.push({ date: it.paymentDate, valor: taxa });
-        if (nv > 0 && it.paymentDate) entradasList.push({
-          date: it.paymentDate, valor: nv,
-          desc: it.description || it.billingType || 'Recebimento',
-          stakeholder: it.customerName || '—',
-        });
-      }
-      if (!d2.hasMore) break;
-      off2 += 100; if (off2 > 9900) break;
-    }
-    ASAAS_RECEBIDOS_ANO = recebidos;
-    ASAAS_TAXAS_LIST = taxasList;
-    ASAAS_ENTRADAS_LIST = entradasList;
-
-    // 3. Transferências saídas — sem filtro de status (inspeciona o que retorna)
-    const saidasList = [];
-    let transferidos = 0, off3 = 0;
-    while (true) {
-      const p3 = new URLSearchParams({
-        endpoint: 'transfers',
-        'dateCreated[ge]': `${anoFmt}-01-01`,
-        'dateCreated[le]': limFmt,
-        limit: 100, offset: off3,
-      });
-      const r3 = await fetch(`/api/asaas?${p3}`, { headers: { 'X-Asaas-Token': asaasToken } });
-      if (!r3.ok) { console.warn('[Asaas] transfers HTTP ' + r3.status); break; }
-      const d3 = await r3.json();
-      if (d3.errors) { console.warn('[Asaas] transfers errors:', JSON.stringify(d3.errors)); break; }
-      const items3 = d3.data || [];
-      if (off3 === 0) console.log('[Asaas] transfers p1: ' + items3.length + ' itens | statuses: ' + [...new Set(items3.map(t => t.status))].join(','));
-      for (const t of items3) {
-        if (t.status === 'CANCELLED' || t.status === 'FAILED') continue;
-        const v = parseFloat(t.value ?? 0);
-        transferidos += v;
-        const date = t.effectiveDate || t.dateCreated;
-        if (v > 0 && date) saidasList.push({
-          date, valor: v,
-          desc: t.description || 'Transferência bancária',
-          stakeholder: t.bankAccount?.bank?.name || '—',
-          tipo: 'transfer',
-        });
-      }
-      if (!d3.hasMore) break;
-      off3 += 100; if (off3 > 9900) break;
-    }
-    ASAAS_TRANSFERIDOS_ANO = transferidos;
-
-    // 4. Contas pagas (bill-payment) — sem filtro de status
-    let off4 = 0;
-    while (true) {
-      const p4 = new URLSearchParams({
-        endpoint: 'bill-payment',
-        'paymentDate[ge]': `${anoFmt}-01-01`,
-        'paymentDate[le]': limFmt,
-        limit: 100, offset: off4,
-      });
-      const r4 = await fetch(`/api/asaas?${p4}`, { headers: { 'X-Asaas-Token': asaasToken } });
-      if (!r4.ok) { console.warn('[Asaas] bill-payment HTTP ' + r4.status); break; }
-      const d4 = await r4.json();
-      if (d4.errors) { console.warn('[Asaas] bill-payment errors: ' + JSON.stringify(d4.errors)); break; }
-      const items4 = d4.data || [];
-      if (off4 === 0) console.log('[Asaas] bill-payment p1: ' + items4.length + ' itens');
-      for (const b of items4) {
-        if (b.status === 'CANCELLED' || b.status === 'PENDING') continue;
-        const v = parseFloat(b.value ?? 0);
-        if (v > 0 && b.paymentDate) saidasList.push({
-          date: b.paymentDate, valor: v,
-          desc: b.description || b.identificationField || 'Pagamento',
-          stakeholder: '—', tipo: 'bill-payment',
-        });
-      }
-      if (!d4.hasMore) break;
-      off4 += 100; if (off4 > 9900) break;
-    }
-    ASAAS_SAIDAS_LIST = saidasList;
-
-    // 5. Extrato completo da conta (financialTransactions) — base do Fluxo de Caixa sem ajuste manual
-    let off5 = 0;
-    const movsList = [];
-    while (true) {
-      const p5 = new URLSearchParams({
-        endpoint: 'financialTransactions',
-        startDate: `${anoFmt}-01-01`,
-        finishDate: limFmt,
-        limit: 100, offset: off5,
-      });
-      const r5 = await fetch(`/api/asaas?${p5}`, { headers: { 'X-Asaas-Token': asaasToken } });
-      if (!r5.ok) { console.warn('[Asaas] financialTransactions HTTP ' + r5.status); break; }
-      const d5 = await r5.json();
-      if (d5.errors) { console.warn('[Asaas] financialTransactions errors:', JSON.stringify(d5.errors)); break; }
-      const items5 = d5.data || [];
-      if (off5 === 0) {
-        console.log('[Asaas] financialTransactions p1: ' + items5.length + ' itens | totalCount=' + d5.totalCount);
-        if (items5.length > 0) console.log('[Asaas] financialTx[0] sample:', JSON.stringify(items5[0]));
-      }
-      for (const t of items5) {
-        const v = parseFloat(t.value ?? 0);
-        if (!v || !t.date) continue;
-        movsList.push({
-          date: t.date,
-          id: t.id || '',
-          valor: Math.abs(v),
-          tipo: v > 0 ? 'entrada' : 'saida',
-          txType: t.type || '',
-          desc: t.description || t.transactionType || '—',
-          balance: parseFloat(t.balance ?? 0),
-        });
-      }
-      if (!d5.hasMore) break;
-      off5 += 100; if (off5 > 9900) break;
-    }
-    ASAAS_MOVIMENTOS_LIST = movsList;
-
-    const totalTaxas = taxasList.reduce((s, t) => s + t.valor, 0);
-    const totalSaidas = saidasList.reduce((s, t) => s + t.valor, 0);
-    const totalMovEntradas = movsList.filter(m => m.tipo === 'entrada').reduce((s, m) => s + m.valor, 0);
-    const totalMovSaidas   = movsList.filter(m => m.tipo === 'saida').reduce((s, m) => s + m.valor, 0);
-    console.log('[Asaas] saldo_atual: R$' + (SALDO_ASAAS_ATUAL?.toFixed(2) ?? '?') +
-      ' | entradas: R$' + recebidos.toFixed(2) +
-      ' | taxas: R$' + totalTaxas.toFixed(2) +
-      ' | saídas (transfer+bill): R$' + totalSaidas.toFixed(2) +
-      ' | financialTx: ' + movsList.length + ' itens (E=' + totalMovEntradas.toFixed(2) + ' S=' + totalMovSaidas.toFixed(2) + ')');
-  } catch(e) { console.warn('[Asaas] Saldo/fluxo:', e.message); }
-}
-
-function calcularSaldoAbertura() {
-  SALDO_INICIAL_2026 = 0; // substituído por ASAAS_SALDO_ABERTURA no fluxo
-  localStorage.removeItem('c3x_saldo_abertura_asaas');
-}
-
-
-async function carregarNibo() {
-  const loaderEl = document.getElementById('loader-label');
-  // Inclui dueDate do ANO_FILTRO e 2 anos anteriores: itens com atraso ainda são capturados
-  // A filtragem por paymentDate=ANO_FILTRO é feita no cliente (regime de caixa)
-  const filtro = {'$orderby':'dueDate','$filter':`(year(dueDate) eq ${ANO_FILTRO} or year(dueDate) eq ${ANO_FILTRO-1} or year(dueDate) eq ${ANO_FILTRO-2})`};
-
-  loaderEl.textContent = 'Buscando categorias...';
-  await carregarCategoriasNibo();
-
-  loaderEl.textContent = 'Buscando receitas...';
-  const creditData = await niboGetAll('schedules/credit', filtro);
-  RAW_CREDITS = creditData.items || [];
-
-  loaderEl.textContent = 'Buscando despesas...';
-  const debitData = await niboGetAll('schedules/debit', filtro);
-
-  RAW_DEBITS = debitData.items || [];
-  console.log('[Nibo] Total créditos:', creditData.items.length, '| pagos:', creditData.items.filter(i=>i.isPaid).length);
-  console.log('[Nibo] Total débitos:', debitData.items.length, '| pagos:', debitData.items.filter(i=>i.isPaid).length);
-
-  // ── Integração Asaas: paymentDate real por item ──────────────────────────────
-  ASAAS_MAP = {};
-  const _asaasToken = localStorage.getItem('c3x_asaas_token') || '';
-  if (_asaasToken) {
-    loaderEl.textContent = 'Buscando datas de pagamento Asaas...';
-    try {
-      const dvList = await carregarAsaasMap(_asaasToken);
-      enriquecerAsaasMapFallback(dvList);
-    } catch(e) {
-      console.warn('[Asaas] Falha ao carregar:', e.message);
-    }
-    loaderEl.textContent = 'Buscando saldo Asaas...';
-    await carregarAsaasSaldos(_asaasToken);
-  } else {
-    console.log('[Asaas] Token não configurado — receita usará dueDate como fallback.');
-  }
-
-  loaderEl.textContent = 'Processando...';
-
-  document.getElementById('loader-label').textContent = 'Processando centros de custo...';
-  await carregarCentrosCusto(creditData, debitData);
-  document.getElementById('loader-label').textContent = 'Processando receitas...';
-
-  // Processar por mês
   REAL.receita      = Array(12).fill(0);
   REAL.despesa      = Array(12).fill(0);
   REAL.custos       = Array(12).fill(0);
@@ -1466,7 +1116,7 @@ async function carregarNibo() {
   REAL.categoriasRec = {};
 
   // REGIME DE CAIXA — créditos
-  for (const item of (creditData.items||[])) {
+  for (const item of RAW_CREDITS) {
     const isPaidTrue = item.isPaid === true || item.isEntry === true;
     const v = isPaidTrue
       ? Math.abs(item.value||0)
@@ -1483,7 +1133,7 @@ async function carregarNibo() {
     const catL = cat.toLowerCase();
     if (!REAL.categoriasRec[cat]) REAL.categoriasRec[cat] = Array(12).fill(0);
     REAL.categoriasRec[cat][m] += v;
-    const desc = (item.description||'').toLowerCase();
+    const desc  = (item.description||'').toLowerCase();
     const stake = (item.stakeholder?.name||'').toLowerCase();
     if ((catL.includes('escola') || desc.includes('escola de sócio')) && !catL.includes('clube')) {
       REAL.escola[m] += v;
@@ -1494,11 +1144,10 @@ async function carregarNibo() {
     }
   }
 
-  // Investimentos/distribuições: não entram no Resultado Operacional (função global — usada também no Fluxo de Caixa)
   if (!window.ehInvestimento) window.ehInvestimento = cat => /adiantamento de lucros|equipamentos|utensílio|acerto de contas|estorno|reversão/i.test(cat);
 
-  // REGIME DE CAIXA: despesas — usa paymentDate (baixa manual) ou dueDate como fallback
-  for (const item of (debitData.items||[])) {
+  // REGIME DE CAIXA — despesas
+  for (const item of RAW_DEBITS) {
     const pago = item.isPaid === true || (item.isPaid == null && Math.abs(item.openValue||0) === 0 && Math.abs(item.value||0) > 0);
     if (!pago) continue;
     const d = item.isPaid === true
@@ -1506,34 +1155,22 @@ async function carregarNibo() {
       : (item.dueDate || item.scheduleDate);
     if (!d) continue;
     const dt = new Date(d);
-    if (dt.getFullYear()!==ANO_FILTRO) continue;
+    if (dt.getFullYear() !== ANO_FILTRO) continue;
     const m = dt.getMonth();
     const v = Math.abs(item.value||0);
-
     const cat = item.categories?.[0]?.categoryName || item.categoryName || 'Outros';
-
-    // Registra em categoria (para comparação com PROJ_CAT)
     if (!REAL.categorias[cat]) REAL.categorias[cat] = Array(12).fill(0);
     REAL.categorias[cat][m] += v;
-
-    // Soma no resultado operacional apenas se for despesa operacional (não investimento)
-    if (!ehInvestimento(cat)) {
-      REAL.despesa[m] += v;
-    }
-    // Investimentos (Adiantamento de Lucros etc.) ficam só em REAL.categorias
+    if (!ehInvestimento(cat)) REAL.despesa[m] += v;
   }
 
-
-  // Resultado
   for (let i=0;i<12;i++) REAL.resultado[i] = REAL.receita[i] - REAL.despesa[i];
 
-  // Custos = despesas COM centro de custo (diretas); soma de todos os CC_DATA
   REAL.custos = Array(12).fill(0);
   for (const cc of Object.keys(CC_DATA)) {
     for (let i=0;i<12;i++) REAL.custos[i] += CC_DATA[cc].desp[i];
   }
 
-  // Enriquecer cache de categorias com as vistas nos lançamentos desta sessão
   try {
     const cached2 = JSON.parse(localStorage.getItem('c3x_nibo_cats_v4') || '{"rec":[],"desp":[],"secoes":{}}');
     const setRec  = new Set([...cached2.rec,  ...Object.keys(REAL.categoriasRec||{})]);
@@ -1542,9 +1179,6 @@ async function carregarNibo() {
     cached2.desp = [...setDesp];
     localStorage.setItem('c3x_nibo_cats_v4', JSON.stringify(cached2));
   } catch(e) {}
-
-  // Saldo de abertura — calculado após REAL usando mesma fonte dos lançamentos
-  calcularSaldoAbertura();
 }
 
 /* ═══════════════════════════════════════════
@@ -2368,8 +2002,6 @@ function fluxoGerarSemanas(from, to) {
 }
 
 // Somente lançamentos da conta operacional Asaas entram no Fluxo de Caixa (whitelist)
-const FLUXO_CONTA_ASAAS = /recebimentos\s*asaas/i;
-
 function fluxoAgregarDados(semanas, cc) {
   const [from, to] = periodoMeses();
   // parseLocal: converte 'YYYY-MM-DD' sem shift UTC (new Date('2026-01-31') em UTC-3 vira 30/Jan)
@@ -2393,174 +2025,76 @@ function fluxoAgregarDados(semanas, cc) {
     return lista.map(c => c.costCenterDescription || c.description || c.name || '').filter(Boolean);
   };
 
-  // ── MODO ASAAS: usa financialTransactions (extrato exato da conta Recebimentos Asaas) ──
-  // Nibo schedules não expõem bankAccount — única fonte confiável é Asaas.
-  const usarAsaas = !ccFiltro && ASAAS_MOVIMENTOS_LIST.length > 0;
-
-  if (usarAsaas) {
-    // Realizados: itens Nibo conciliados
-    // Considera pago: isPaid=true, isEntry=true, ou openValue===0 (quitado sem flag boolean)
-    // Fonte: schedules/credit e schedules/debit — itens descartados na OFX não aparecem aqui
-    const _isPaidC = it => it.isPaid === true || it.isEntry === true || (it.openValue === 0 && Math.abs(it.value||0) > 0);
-    const _isPaidD = it => it.isPaid === true || (it.openValue === 0 && Math.abs(it.value||0) > 0);
-
-    for (const item of RAW_CREDITS) {
-      if (!_isPaidC(item)) continue;
-      const vReal = Math.abs(item.value || 0); if (!vReal) continue;
+  for (const item of RAW_CREDITS) {
+    if (ccFiltro && !ccDeItem(item).includes(ccFiltro)) continue;
+    const ccLabel = ccDeItem(item)[0] || 'Sem CC';
+    const stake   = item.stakeholder?.name || '—';
+    const desc    = item.description || '—';
+    const isPaidTrue = item.isPaid === true || item.isEntry === true;
+    const vReal   = isPaidTrue ? Math.abs(item.value||0) : Math.abs(item.value||0) - Math.abs(item.openValue||0);
+    const vPrev   = !isPaidTrue ? Math.abs(item.openValue||0) : 0;
+    if (vReal > 0) {
       const dStr = _dataCaixa(item); if (!dStr) continue;
       const d = parseLocal(dStr); const s = findSem(d); if (!s) continue;
       s.entradas_real += vReal;
-      s.lancamentos.push({ tipo: 'entrada_real', data: toDay(d), desc: item.description||'—', valor: vReal, stakeholder: item.stakeholder?.name||'—', cc: ccDeItem(item)[0]||'Sem CC' });
+      s.lancamentos.push({ tipo: 'entrada_real', data: toDay(d), desc, valor: vReal, stakeholder: stake, cc: ccLabel });
     }
-
-    for (const item of RAW_DEBITS) {
-      if (!_isPaidD(item)) continue;
-      const vReal = Math.abs(item.value || 0); if (!vReal) continue;
-      const dStr = item.paymentDate || item.dueDate || item.scheduleDate; if (!dStr) continue;
-      const d = parseLocal(dStr); const s = findSem(d); if (!s) continue;
-      s.saidas_real += vReal;
-      s.lancamentos.push({ tipo: 'saida_real', data: toDay(d), desc: item.description||'—', valor: vReal, stakeholder: item.stakeholder?.name||'—', cc: ccDeItem(item)[0]||'Sem CC', investimento: false });
-    }
-
-    // Provisionados: itens Nibo ainda não pagos
-    // openValue pode ser null para itens que nunca tiveram pagamento parcial → usa value como fallback
-    for (const item of RAW_CREDITS) {
-      if (item.isPaid === true || item.isEntry === true) continue;
-      const vPrev = (item.openValue != null && item.openValue > 0) ? Math.abs(item.openValue) : Math.abs(item.value || 0);
-      if (!vPrev) continue;
+    if (vPrev > 0) {
       const dStr = item.dueDate || item.scheduleDate; if (!dStr) continue;
       const d = parseLocal(dStr); const s = findSem(d); if (!s) continue;
       s.entradas_prev += vPrev;
-      s.lancamentos.push({ tipo: 'entrada_prev', data: toDay(d), desc: item.description||'—', valor: vPrev, stakeholder: item.stakeholder?.name||'—', cc: ccDeItem(item)[0]||'Sem CC' });
+      s.lancamentos.push({ tipo: 'entrada_prev', data: toDay(d), desc, valor: vPrev, stakeholder: stake, cc: ccLabel });
     }
-    for (const item of RAW_DEBITS) {
-      const v = Math.abs(item.value || 0); if (!v) continue;
-      const pago = item.isPaid === true || (item.isPaid == null && Math.abs(item.openValue||0) === 0 && v > 0);
-      if (pago) continue;
+  }
+
+  for (const item of RAW_DEBITS) {
+    const v = Math.abs(item.value||0); if (!v) continue;
+    if (ccFiltro && !ccDeItem(item).includes(ccFiltro)) continue;
+    const ccLabel = ccDeItem(item)[0] || 'Sem CC';
+    const stake   = item.stakeholder?.name || '—';
+    const desc    = item.description || '—';
+    const cat     = item.categories?.[0]?.categoryName || item.categoryName || '';
+    const pago    = item.isPaid===true||(item.isPaid==null&&Math.abs(item.openValue||0)===0&&v>0);
+    if (pago) {
+      const dStr = item.isPaid===true?(item.paymentDate||item.dueDate||item.scheduleDate):(item.dueDate||item.scheduleDate);
+      if (!dStr) continue;
+      const d = parseLocal(dStr); const s = findSem(d); if (!s) continue;
+      s.saidas_real += v;
+      s.lancamentos.push({ tipo: 'saida_real', data: toDay(d), desc, valor: v, stakeholder: stake, cc: ccLabel, investimento: ehInvestimento(cat) });
+    } else {
       const dStr = item.dueDate || item.scheduleDate; if (!dStr) continue;
       const d = parseLocal(dStr); const s = findSem(d); if (!s) continue;
-      const vPrev = (item.openValue != null && item.openValue > 0) ? Math.abs(item.openValue) : v;
+      const vPrev = Math.abs(item.openValue||0) > 0 ? Math.abs(item.openValue) : v;
       s.saidas_prev += vPrev;
-      s.lancamentos.push({ tipo: 'saida_prev', data: toDay(d), desc: item.description||'—', valor: vPrev, stakeholder: item.stakeholder?.name||'—', cc: ccDeItem(item)[0]||'Sem CC' });
+      s.lancamentos.push({ tipo: 'saida_prev', data: toDay(d), desc, valor: vPrev, stakeholder: stake, cc: ccLabel });
     }
-
-    const _dbgE  = semanas.reduce((s,w)=>s+w.entradas_real,0);
-    const _dbgS  = semanas.reduce((s,w)=>s+w.saidas_real,0);
-    const _dbgEP = semanas.reduce((s,w)=>s+w.entradas_prev,0);
-    const _dbgSP = semanas.reduce((s,w)=>s+w.saidas_prev,0);
-    console.log(`[Fluxo] modo=Nibo-reconciliado | E=${_dbgE.toFixed(2)} S=${_dbgS.toFixed(2)} EP=${_dbgEP.toFixed(2)} SP=${_dbgSP.toFixed(2)}`);
-
-    for (const s of semanas) s.lancamentos.sort((a, b) => a.data - b.data);
-
-    // Saldo acumulado: campo balance da última transação Asaas de cada semana (extrato real da conta)
-    // Entradas/saídas vêm do Nibo mas o saldo vem do Asaas — fonte de verdade para o saldo da conta
-    const movOrdenados = [...ASAAS_MOVIMENTOS_LIST].sort((a, b) => {
-      const da = parseLocal(a.date), db = parseLocal(b.date);
-      if (da < db) return -1; if (da > db) return 1;
-      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-    });
-    let ultimoBalance = ASAAS_SALDO_ABERTURA[ANO_FILTRO] ?? 0;
-    let preIdx = 0;
-    while (preIdx < movOrdenados.length && parseLocal(movOrdenados[preIdx].date) < inicio) {
-      ultimoBalance = movOrdenados[preIdx].balance;
-      preIdx++;
-    }
-    console.log(`[Fluxo] abertura período ${from+1}/${ANO_FILTRO}: R$${ultimoBalance.toFixed(2)}`);
-    let movIdx = preIdx;
-    for (const s of semanas) {
-      let balanceSemana = null;
-      while (movIdx < movOrdenados.length) {
-        const dt = parseLocal(movOrdenados[movIdx].date);
-        if (dt > s.end) break;
-        balanceSemana = movOrdenados[movIdx].balance;
-        movIdx++;
-      }
-      ultimoBalance = balanceSemana !== null ? balanceSemana : ultimoBalance;
-      s.saldo_acum = ultimoBalance;
-    }
-
-  } else {
-    // ── MODO NIBO (fallback): filtro por CC — Asaas não tem dados de CC ──────
-    const ehContaAsaas = item => {
-      const c = item.bank?.name || item.bankAccount?.name || item.bankAccountName || '';
-      return !c || FLUXO_CONTA_ASAAS.test(c);
-    };
-
-    for (const item of RAW_CREDITS) {
-      if (!ehContaAsaas(item)) continue;
-      if (ccFiltro && !ccDeItem(item).includes(ccFiltro)) continue;
-      const ccLabel = ccDeItem(item)[0] || 'Sem CC';
-      const stake   = item.stakeholder?.name || '—';
-      const desc    = item.description || '—';
-      const isPaidTrue = item.isPaid === true || item.isEntry === true;
-      const vReal   = isPaidTrue ? Math.abs(item.value||0) : Math.abs(item.value||0) - Math.abs(item.openValue||0);
-      const vPrev   = !isPaidTrue ? Math.abs(item.openValue||0) : 0;
-      if (vReal > 0) {
-        const dStr = _dataCaixa(item); if (!dStr) continue;
-        const d = parseLocal(dStr); const s = findSem(d); if (!s) continue;
-        s.entradas_real += vReal;
-        s.lancamentos.push({ tipo: 'entrada_real', data: toDay(d), desc, valor: vReal, stakeholder: stake, cc: ccLabel });
-      }
-      if (vPrev > 0) {
-        const dStr = item.dueDate || item.scheduleDate; if (!dStr) continue;
-        const d = parseLocal(dStr); const s = findSem(d); if (!s) continue;
-        s.entradas_prev += vPrev;
-        s.lancamentos.push({ tipo: 'entrada_prev', data: toDay(d), desc, valor: vPrev, stakeholder: stake, cc: ccLabel });
-      }
-    }
-
-    for (const item of RAW_DEBITS) {
-      const v = Math.abs(item.value||0); if (!v) continue;
-      if (!ehContaAsaas(item)) continue;
-      if (ccFiltro && !ccDeItem(item).includes(ccFiltro)) continue;
-      const ccLabel = ccDeItem(item)[0] || 'Sem CC';
-      const stake   = item.stakeholder?.name || '—';
-      const desc    = item.description || '—';
-      const cat     = item.categories?.[0]?.categoryName || item.categoryName || '';
-      const pago    = item.isPaid===true||(item.isPaid==null&&Math.abs(item.openValue||0)===0&&v>0);
-      if (pago) {
-        const dStr = item.isPaid===true?(item.paymentDate||item.dueDate||item.scheduleDate):(item.dueDate||item.scheduleDate);
-        if (!dStr) continue;
-        const d = parseLocal(dStr); const s = findSem(d); if (!s) continue;
-        s.saidas_real += v;
-        s.lancamentos.push({ tipo: 'saida_real', data: toDay(d), desc, valor: v, stakeholder: stake, cc: ccLabel, investimento: ehInvestimento(cat) });
-      } else {
-        const dStr = item.dueDate || item.scheduleDate; if (!dStr) continue;
-        const d = parseLocal(dStr); const s = findSem(d); if (!s) continue;
-        const vPrev = Math.abs(item.openValue||0) > 0 ? Math.abs(item.openValue) : v;
-        s.saidas_prev += vPrev;
-        s.lancamentos.push({ tipo: 'saida_prev', data: toDay(d), desc, valor: vPrev, stakeholder: stake, cc: ccLabel });
-      }
-    }
-
-    for (const s of semanas) s.lancamentos.sort((a, b) => a.data - b.data);
-
-    const _ancoraMes = (SALDO_ABERTURA_MENSAL[ANO_FILTRO] || {})[from + 1];
-    let acum = _ancoraMes != null ? _ancoraMes : (ASAAS_SALDO_ABERTURA[ANO_FILTRO] ?? 0);
-    if (_ancoraMes == null && semanas.length > 0) {
-      const periodoInicio = semanas[0].start;
-      if (periodoInicio > jan1) {
-        for (const item of RAW_CREDITS) {
-          if (!ehContaAsaas(item)) continue;
-          const ok = item.isPaid===true||item.isEntry===true; if (!ok) continue;
-          const vr = Math.abs(item.value||0); if (!vr) continue;
-          const ds = _dataCaixa(item); if (!ds) continue;
-          const dt = parseLocal(ds);
-          if (dt.getFullYear()===ANO_FILTRO && dt>=jan1 && dt<periodoInicio) acum += vr;
-        }
-        for (const item of RAW_DEBITS) {
-          if (!ehContaAsaas(item)) continue;
-          const ok = item.isPaid===true||(item.isPaid==null&&Math.abs(item.openValue||0)===0&&Math.abs(item.value||0)>0);
-          if (!ok) continue;
-          const ds = item.isPaid===true?(item.paymentDate||item.dueDate||item.scheduleDate):(item.dueDate||item.scheduleDate);
-          if (!ds) continue;
-          const dt = parseLocal(ds);
-          if (dt.getFullYear()===ANO_FILTRO && dt>=jan1 && dt<periodoInicio) acum -= Math.abs(item.value||0);
-        }
-      }
-    }
-    for (const s of semanas) { acum += s.entradas_real - s.saidas_real; s.saldo_acum = acum; }
   }
+
+  for (const s of semanas) s.lancamentos.sort((a, b) => a.data - b.data);
+
+  const _ancoraMes = (SALDO_ABERTURA_MENSAL[ANO_FILTRO] || {})[from + 1];
+  let acum = _ancoraMes != null ? _ancoraMes : 0;
+  if (_ancoraMes == null && semanas.length > 0) {
+    const periodoInicio = semanas[0].start;
+    if (periodoInicio > jan1) {
+      for (const item of RAW_CREDITS) {
+        const ok = item.isPaid===true||item.isEntry===true; if (!ok) continue;
+        const vr = Math.abs(item.value||0); if (!vr) continue;
+        const ds = _dataCaixa(item); if (!ds) continue;
+        const dt = parseLocal(ds);
+        if (dt.getFullYear()===ANO_FILTRO && dt>=jan1 && dt<periodoInicio) acum += vr;
+      }
+      for (const item of RAW_DEBITS) {
+        const ok = item.isPaid===true||(item.isPaid==null&&Math.abs(item.openValue||0)===0&&Math.abs(item.value||0)>0);
+        if (!ok) continue;
+        const ds = item.isPaid===true?(item.paymentDate||item.dueDate||item.scheduleDate):(item.dueDate||item.scheduleDate);
+        if (!ds) continue;
+        const dt = parseLocal(ds);
+        if (dt.getFullYear()===ANO_FILTRO && dt>=jan1 && dt<periodoInicio) acum -= Math.abs(item.value||0);
+      }
+    }
+  }
+  for (const s of semanas) { acum += s.entradas_real - s.saidas_real; s.saldo_acum = acum; }
 
   return semanas;
 }
@@ -2728,23 +2262,19 @@ function renderFluxo() {
       <div class="kpi-proj">${semsNeg} semana(s) deficitária(s)</div>
       <div class="kpi-delta ${semsPos >= semsNeg?'pos':'neg'}">${semanas.length > 0 ? Math.round(semsPos/semanas.length*100) : 0}% positivas</div>
     </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Saldo Conta Asaas</div>
-      <div class="kpi-value" style="color:${SALDO_ASAAS_ATUAL!==null?(SALDO_ASAAS_ATUAL>=0?'var(--blue)':'var(--red)'):'var(--blue)'}">${SALDO_ASAAS_ATUAL!==null?fmtK(SALDO_ASAAS_ATUAL):fmtK(SALDO_INICIAL_2026)}</div>
-      <div class="kpi-proj">Abertura Jan/${ANO_FILTRO}: <strong>${fmtK(ASAAS_SALDO_ABERTURA[ANO_FILTRO] ?? 0)}</strong></div>
-      <div class="kpi-delta pos">Recebimentos Asaas</div>
-    </div>
     ${(() => {
-      if (SALDO_ASAAS_ATUAL === null || SALDO_ASAAS_ATUAL <= 0 || totSaiR <= 0) return '';
+      if (totSaiR <= 0) return '';
+      const _ancora = (SALDO_ABERTURA_MENSAL[ANO_FILTRO] || {})[from + 1];
+      if (_ancora == null) return '';
       const numMeses = to - from + 1;
       const burnRate = totSaiR / numMeses;
-      const runway   = SALDO_ASAAS_ATUAL / burnRate;
+      const runway   = _ancora / burnRate;
       const rc = runway >= 6 ? 'var(--green)' : runway >= 3 ? 'var(--amber)' : 'var(--red)';
       return `<div class="kpi-card">
         <div class="kpi-label">Runway de caixa</div>
         <div class="kpi-value" style="color:${rc}">${runway.toFixed(1)} meses</div>
         <span class="kpi-tag realized">de operação</span>
-        <div class="kpi-proj">Saldo: ${fmtK(SALDO_ASAAS_ATUAL)}</div>
+        <div class="kpi-proj">Saldo abertura: ${fmtK(_ancora)}</div>
         <div class="kpi-delta">Burn rate: ${fmtK(burnRate)}/mês</div>
       </div>`;
     })()}
@@ -3349,7 +2879,7 @@ async function carregarCentrosCusto(creditData, debitData) {
   }
 
   // Receitas por CC — REGIME DE CAIXA: apenas isPaid=true ou isEntry=true
-  // Usa mesma lógica de data que carregarNibo: paymentDate > Asaas lookup > dueDate
+  // Usa mesma lógica de data que _dataCaixa: paymentDate > dueDate > scheduleDate
   // Inadimplência: isPaid=false + dueDate no passado
   const hoje = new Date();
   CC_INADIM = {};
@@ -3818,23 +3348,6 @@ function setAno(val) {
    INTEGRAÇÕES
 ═══════════════════════════════════════════ */
 function integAtualizarBadges() {
-  const temNibo   = !!localStorage.getItem('nibo_token_c3x');
-  const temAsaas  = !!localStorage.getItem('c3x_asaas_token');
-
-  const niboBadge  = document.getElementById('integ-nibo-badge');
-  const asaasBadge = document.getElementById('integ-asaas-badge');
-
-  if (niboBadge) {
-    niboBadge.textContent  = temNibo  ? '● Conectado' : '● Não configurado';
-    niboBadge.style.background = temNibo  ? '#dcfce7' : '#f3f4f6';
-    niboBadge.style.color      = temNibo  ? '#16a34a' : '#6b7280';
-  }
-  if (asaasBadge) {
-    asaasBadge.textContent  = temAsaas ? '● Conectado' : '● Não configurado';
-    asaasBadge.style.background = temAsaas ? '#dcfce7' : '#f3f4f6';
-    asaasBadge.style.color      = temAsaas ? '#16a34a' : '#6b7280';
-  }
-
   // Popula form Aparência com valores atuais
   const nomeInput = document.getElementById('aparencia-nome-input');
   const previewNome = document.getElementById('aparencia-preview-nome');
@@ -3851,75 +3364,26 @@ function integAtualizarBadges() {
   }
 }
 
-async function integSalvarNibo() {
-  const t = document.getElementById('integ-nibo-input').value.trim();
-  const statusEl = document.getElementById('integ-nibo-status');
-  if (!t) { statusEl.style.color='var(--red)'; statusEl.textContent='Cole o token antes de salvar.'; return; }
-  statusEl.style.color='var(--text2)'; statusEl.textContent='Verificando...';
-  TOKEN = t;
-  localStorage.setItem('nibo_token_c3x', t);
-  document.getElementById('token-input').value = t;
-  try {
-    await recarregar();
-    statusEl.style.color='var(--green)'; statusEl.textContent='Token salvo e dados recarregados.';
-    document.getElementById('integ-nibo-input').value = '';
-    integAtualizarBadges();
-  } catch(e) {
-    TOKEN = ''; localStorage.removeItem('nibo_token_c3x');
-    statusEl.style.color='var(--red)'; statusEl.textContent='Token inválido: ' + (e.message||'erro desconhecido');
-    integAtualizarBadges();
-  }
-}
-
-async function integSalvarAsaas() {
-  const t = document.getElementById('integ-asaas-input').value.trim();
-  const statusEl = document.getElementById('integ-asaas-status');
-
+function integSalvarKVToken() {
+  const t = document.getElementById('integ-kv-input').value.trim();
+  const statusEl = document.getElementById('integ-kv-status');
   if (!t) {
-    localStorage.removeItem('c3x_asaas_token');
+    localStorage.removeItem('c3x_kv_token');
+    KV_TOKEN = '';
     statusEl.style.color='var(--text2)'; statusEl.textContent='Token removido.';
-    integAtualizarBadges();
     return;
   }
-
-  statusEl.style.color='var(--text2)'; statusEl.textContent='Verificando...';
-  try {
-    const params = new URLSearchParams({ endpoint: 'payments', status: 'RECEIVED', limit: 1, offset: 0 });
-    const resp = await fetch(`/api/asaas?${params}`, { headers: { 'X-Asaas-Token': t } });
-    const data = await resp.json();
-    if (!resp.ok || data.error) {
-      statusEl.style.color='var(--red)';
-      statusEl.textContent='Token inválido: ' + (data.error || 'HTTP ' + resp.status);
-      return;
-    }
-    localStorage.setItem('c3x_asaas_token', t);
-    statusEl.style.color='var(--green)';
-    statusEl.textContent='Token válido.' + (data.totalCount != null ? ' ' + data.totalCount + ' pagamentos recebidos disponíveis.' : '');
-    document.getElementById('integ-asaas-input').value = '';
-    integAtualizarBadges();
-    recarregarManual();
-  } catch(e) {
-    statusEl.style.color='var(--red)'; statusEl.textContent='Erro de conexão: ' + e.message;
-  }
-}
-
-/* ═══════════════════════════════════════════
-   AUTENTICAÇÃO
-═══════════════════════════════════════════ */
-async function conectar() {
-  const t = document.getElementById('token-input').value.trim();
-  if (!t) return;
-  TOKEN = t;
-  localStorage.setItem('nibo_token_c3x', t);
-  await iniciar();
+  localStorage.setItem('c3x_kv_token', t);
+  KV_TOKEN = t;
+  document.getElementById('integ-kv-input').value = '';
+  statusEl.style.color='var(--green)'; statusEl.textContent='Token salvo.';
 }
 
 async function iniciar() {
   document.getElementById('setup-screen').style.display = 'none';
   document.getElementById('loading-screen').style.display = 'flex';
-  document.getElementById('setup-error').style.display = 'none';
   try {
-    await carregarNibo();
+    await carregarDadosKV();
     await sincronizarOrcDeKV();
     renderTudo();
     document.getElementById('loading-screen').style.display = 'none';
@@ -3933,13 +3397,11 @@ async function iniciar() {
     console.error('[C3X] Erro ao carregar:', e);
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('setup-screen').style.display = 'flex';
-    const isAuthErr = e.message && /401|403|token|autoriza/i.test(e.message);
     const errEl = document.getElementById('setup-error');
     const detEl = document.getElementById('setup-error-detail');
-    errEl.textContent = isAuthErr ? 'Token inválido. Verifique e tente novamente.' : 'Erro ao carregar dados. Verifique sua conexão.';
+    errEl.textContent = e.message || 'Erro ao carregar dados.';
     errEl.style.display = 'block';
-    if (detEl) { detEl.textContent = e.message || String(e); detEl.style.display = 'block'; }
-    if (isAuthErr) { TOKEN = ''; localStorage.removeItem('nibo_token_c3x'); }
+    if (detEl) { detEl.textContent = String(e); detEl.style.display = 'block'; }
   }
 }
 
@@ -3948,7 +3410,7 @@ async function recarregar() {
   document.getElementById('sidebar').style.display = 'none';
   document.getElementById('main').style.display = 'none';
   try {
-    await carregarNibo();
+    await carregarDadosKV();
     renderTudo();
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('sidebar').style.display = 'flex';
@@ -3963,7 +3425,6 @@ async function recarregar() {
     restaurarEstadoSidebar();
     const t = document.getElementById('topbar-updated');
     if (t) t.textContent = 'Erro ao atualizar — tente novamente';
-    throw e;
   }
 }
 
@@ -4061,11 +3522,7 @@ function salvarAparencia() {
 
 function sair() {
   pararAutoRefresh();
-  localStorage.removeItem('nibo_token_c3x');
-  TOKEN = '';
-  document.getElementById('sidebar').style.display = 'none';
-  document.getElementById('main').style.display = 'none';
-  document.getElementById('setup-screen').style.display = 'flex';
+  location.reload();
 }
 
 /* ═══════════════════════════════════════════
@@ -4181,7 +3638,6 @@ function carregarOrcGeral() {
 }
 
 async function sincronizarOrcDeKV() {
-  if (!TOKEN) return;
   try {
     const r = await fetch('/api/kv?key=orc_geral');
     if (!r.ok) return;
@@ -4246,11 +3702,10 @@ async function sincronizarOrcDeKV() {
 }
 
 async function orcGeralParaKV(data) {
-  if (!TOKEN) return;
   try {
     await fetch('/api/kv?key=orc_geral', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Nibo-Token': TOKEN },
+      headers: { 'Content-Type': 'application/json', 'X-KV-Token': KV_TOKEN },
       body: JSON.stringify(data)
     });
   } catch (e) {
@@ -4259,11 +3714,10 @@ async function orcGeralParaKV(data) {
 }
 
 async function aparenciaParaKV(nome, logo) {
-  if (!TOKEN) return;
   try {
     await fetch('/api/kv?key=aparencia', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Nibo-Token': TOKEN },
+      headers: { 'Content-Type': 'application/json', 'X-KV-Token': KV_TOKEN },
       body: JSON.stringify({ nome: nome || '', logo: logo || null })
     });
   } catch (e) {
@@ -4272,11 +3726,10 @@ async function aparenciaParaKV(nome, logo) {
 }
 
 async function configParaKV(data) {
-  if (!TOKEN) return;
   try {
     await fetch('/api/kv?key=config_kpis', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Nibo-Token': TOKEN },
+      headers: { 'Content-Type': 'application/json', 'X-KV-Token': KV_TOKEN },
       body: JSON.stringify(data)
     });
   } catch (e) {
@@ -4285,11 +3738,10 @@ async function configParaKV(data) {
 }
 
 async function orcamentoParaKV(data) {
-  if (!TOKEN) return;
   try {
     await fetch('/api/kv?key=orcamento_cc', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Nibo-Token': TOKEN },
+      headers: { 'Content-Type': 'application/json', 'X-KV-Token': KV_TOKEN },
       body: JSON.stringify(data)
     });
   } catch (e) {
@@ -4978,10 +4430,9 @@ function exportarJaneiro() {
 }
 
 window.addEventListener('DOMContentLoaded', ()=>{
-  const saved = localStorage.getItem('nibo_token_c3x');
-  if (saved) { TOKEN=saved; document.getElementById('token-input').value=saved; iniciar(); }
   document.getElementById('topbar-ano').value = String(ANO_FILTRO);
   integAtualizarBadges();
+  iniciar();
 });
 </script>
 

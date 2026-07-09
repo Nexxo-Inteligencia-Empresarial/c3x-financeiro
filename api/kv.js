@@ -25,7 +25,9 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-      if (!req.headers['x-nibo-token']) return res.status(401).json({ error: 'token obrigatório' });
+      const writeToken = process.env.KV_WRITE_TOKEN;
+      const sentToken  = req.headers['x-kv-token'] || req.headers['x-nibo-token'];
+      if (writeToken && sentToken !== writeToken) return res.status(401).json({ error: 'token obrigatório' });
       const payload = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
       const r    = await fetch(kvUrl, { method: 'POST', headers, body: JSON.stringify(['SET', key, payload]) });
       const data = await r.json();
