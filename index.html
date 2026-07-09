@@ -3279,7 +3279,7 @@ function _abrirCC(cc) {
     ${churnVal !== null          ? kpiCard('Churn',              churnVal.toString(),                                  'cancelamentos',         'var(--red)') : ''}
     ${conversao !== null         ? kpiCard('Conversão %',        conversao.toFixed(1)+'%',                             'leads convertidos',     'var(--amber)') : ''}
     ${ltvManual !== null         ? kpiCard('LTV',                fmtK(ltvManual),                                     'valor do cliente',      'var(--blue)') : ''}
-    ${ticket !== null            ? kpiCard('Ticket Médio',       fmtK(ticket),                                       'receita ÷ clientes',    'var(--amber)') : ''}
+    ${sel.includes('ticket') && ticket !== null ? kpiCard('Ticket Médio', fmtK(ticket),                           'receita ÷ clientes',    'var(--amber)') : ''}
     ${sel.includes('cac')        ? kpiCard('CAC',                cac!==null?fmtK(cac):'Precisa de Novos',            'despesa ÷ novos',       'var(--red)') : ''}
     ${sel.includes('roi')        ? kpiCard('ROI %',              roi!==null?roi.toFixed(1)+'%':'—',                  '(rec − desp) ÷ desp',   roi!==null&&roi>=0?'var(--green)':'var(--red)') : ''}
     ${sel.includes('mrr_churn')  ? kpiCard('MRR Churn',          mrr_churn!==null?fmtK(mrr_churn):'Precisa de Churn+Unid.','churn × ticket médio', 'var(--red)') : ''}`;
