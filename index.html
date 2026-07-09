@@ -3452,6 +3452,7 @@ function salvarConfig() {
   });
 
   localStorage.setItem('c3x_config_v2', JSON.stringify(config));
+  configParaKV(config);
   const msg = document.getElementById('config-saved-msg');
   if (msg) { msg.style.display = 'inline'; setTimeout(()=>msg.style.display='none', 2000); }
 }
@@ -4041,11 +4042,14 @@ function salvarAparencia() {
       const dataUrl = e.target.result;
       localStorage.setItem('c3x_empresa_logo', dataUrl);
       aplicarLogoSidebar(dataUrl);
+      aparenciaParaKV(nome, dataUrl);
       if (status) { status.textContent = '✓ Salvo!'; setTimeout(() => status.textContent = '', 2500); }
     };
     reader.readAsDataURL(file);
   } else {
     if (nome) {
+      const logoAtual = localStorage.getItem('c3x_empresa_logo');
+      aparenciaParaKV(nome, logoAtual);
       if (status) { status.textContent = '✓ Salvo!'; setTimeout(() => status.textContent = '', 2500); }
     } else {
       if (status) { status.style.color = 'var(--text2)'; status.textContent = 'Nenhuma alteração.'; setTimeout(() => { status.textContent = ''; status.style.color = ''; }, 2000); }
@@ -4189,6 +4193,54 @@ async function sincronizarOrcDeKV() {
   } catch (e) {
     console.warn('[KV] sincronização falhou, usando localStorage:', e.message);
   }
+
+  try {
+    const r = await fetch('/api/kv?key=aparencia');
+    if (r.ok) {
+      const { value } = await r.json();
+      if (value && value.nome) {
+        localStorage.setItem('c3x_empresa_nome', value.nome);
+        if (value.logo) localStorage.setItem('c3x_empresa_logo', value.logo);
+        else localStorage.removeItem('c3x_empresa_logo');
+      } else {
+        const nome = localStorage.getItem('c3x_empresa_nome');
+        const logo = localStorage.getItem('c3x_empresa_logo');
+        if (nome) await aparenciaParaKV(nome, logo);
+      }
+    }
+  } catch (e) {
+    console.warn('[KV] aparencia sync falhou:', e.message);
+  }
+
+  try {
+    const r = await fetch('/api/kv?key=config_kpis');
+    if (r.ok) {
+      const { value } = await r.json();
+      if (value && typeof value === 'object' && Object.keys(value).length > 0) {
+        localStorage.setItem('c3x_config_v2', JSON.stringify(value));
+      } else {
+        const local = localStorage.getItem('c3x_config_v2');
+        if (local) await configParaKV(JSON.parse(local));
+      }
+    }
+  } catch (e) {
+    console.warn('[KV] config_kpis sync falhou:', e.message);
+  }
+
+  try {
+    const r = await fetch('/api/kv?key=orcamento_cc');
+    if (r.ok) {
+      const { value } = await r.json();
+      if (value && typeof value === 'object' && Object.keys(value).length > 0) {
+        localStorage.setItem('c3x_orcamento_v1', JSON.stringify(value));
+      } else {
+        const local = localStorage.getItem('c3x_orcamento_v1');
+        if (local) await orcamentoParaKV(JSON.parse(local));
+      }
+    }
+  } catch (e) {
+    console.warn('[KV] orcamento_cc sync falhou:', e.message);
+  }
 }
 
 async function orcGeralParaKV(data) {
@@ -4201,6 +4253,45 @@ async function orcGeralParaKV(data) {
     });
   } catch (e) {
     console.warn('[KV] save falhou:', e.message);
+  }
+}
+
+async function aparenciaParaKV(nome, logo) {
+  if (!TOKEN) return;
+  try {
+    await fetch('/api/kv?key=aparencia', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Nibo-Token': TOKEN },
+      body: JSON.stringify({ nome: nome || '', logo: logo || null })
+    });
+  } catch (e) {
+    console.warn('[KV] aparencia save falhou:', e.message);
+  }
+}
+
+async function configParaKV(data) {
+  if (!TOKEN) return;
+  try {
+    await fetch('/api/kv?key=config_kpis', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Nibo-Token': TOKEN },
+      body: JSON.stringify(data)
+    });
+  } catch (e) {
+    console.warn('[KV] config_kpis save falhou:', e.message);
+  }
+}
+
+async function orcamentoParaKV(data) {
+  if (!TOKEN) return;
+  try {
+    await fetch('/api/kv?key=orcamento_cc', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Nibo-Token': TOKEN },
+      body: JSON.stringify(data)
+    });
+  } catch (e) {
+    console.warn('[KV] orcamento_cc save falhou:', e.message);
   }
 }
 
@@ -4532,6 +4623,7 @@ function salvarOrcamento(silent=false) {
   });
   localStorage.setItem('c3x_orcamento_v1', JSON.stringify(data));
   if (!silent) {
+    orcamentoParaKV(data);
     const msg = document.getElementById('orc-saved-msg');
     if (msg) { msg.style.display = 'inline'; setTimeout(() => msg.style.display = 'none', 2000); }
   }
