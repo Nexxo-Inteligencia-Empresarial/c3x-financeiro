@@ -2348,10 +2348,27 @@ function renderVisao() {
   const resReal  = recReal - despReal;
   const resProj  = sumRange(PROJ.resultado, from, to);
 
-  // Margem de contribuição = (Receita - Custos Totais exceto investimentos) / Receita
-  // usa REAL.despesa que já exclui Adiantamento de Lucros e Equipamentos via ehInvestimento
-  const margReal = recReal > 0 ? resReal / recReal : 0;
-  const margProj = recProj > 0 ? resProj / recProj : 0;
+  // Margem de contribuição — fórmula Nibo:
+  //   Receita Líquida = Receita Bruta - Deduções (groupRef='1', type='out')
+  //   Custos Operacionais = débitos groupRef='2'
+  //   Margem % = (Rec. Líquida - Custos) / Rec. Líquida
+  let _deducoes = Array(12).fill(0), _custos = Array(12).fill(0);
+  for (const item of RAW_DEBITS) {
+    const isPaidTrue = item.isPaid === true || item.isEntry === true;
+    if (!isPaidTrue) continue;
+    const d = _dataCaixa(item); if (!d) continue;
+    const dt = new Date(d); if (dt.getFullYear() !== ANO_FILTRO) continue;
+    const m = dt.getMonth();
+    const v = Math.abs(item.value || 0);
+    const ref = item.categories?.[0]?.groupRef;
+    if (ref === '1') _deducoes[m] += v;
+    else if (ref === '2') _custos[m] += v;
+  }
+  const deducoesReal = sumRange(_deducoes, from, to);
+  const custosReal   = sumRange(_custos,   from, to);
+  const recLiqReal   = recReal - deducoesReal;
+  const margReal     = recLiqReal > 0 ? (recLiqReal - custosReal) / recLiqReal : 0;
+  const margProj     = recProj   > 0 ? resProj / recProj : 0;
 
   const deltaRec  = recProj>0 ? (recReal-recProj)/recProj : 0;
   const deltaDesp = despProj>0 ? (despReal-despProj)/despProj : 0;
