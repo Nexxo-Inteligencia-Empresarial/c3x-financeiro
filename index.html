@@ -3247,7 +3247,7 @@ function abrirCC(cc) {
     </div>`;
 
   document.getElementById('servico-cc-kpis').innerHTML = `
-    <style>#servico-cc-kpis{grid-template-columns:repeat(4,1fr)}</style>
+    <style>#servico-cc-kpis{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}</style>
     ${kpiCard('Receita recebida',    fmtFull(rec),  'regime de caixa',    'var(--green)')}
     ${kpiCard('Despesa total',       fmtFull(desp), 'no período',         'var(--red)')}
     ${kpiCard('Resultado',           fmtFull(res),  'recebida − despesa', res>=0?'var(--green)':'var(--red)')}
@@ -3260,7 +3260,7 @@ function abrirCC(cc) {
     ${novos !== null             ? kpiCard('Novos no período',   novos.toString(),                                     'aquisições',            'var(--blue)') : ''}
     ${inadimCC > 0               ? kpiCard('Inadimplência',      fmtFull(inadim),                                     'vencido não pago',      'var(--red)') : ''}
     ${sel.includes('inadim_pct') ? kpiCard('Inadimplência %',    inadim_pct!==null?inadim_pct.toFixed(1)+'%':'—',    'do total faturado',     (inadim_pct||0)>10?'var(--red)':'var(--amber)') : ''}
-    ${mrrManual !== null         ? kpiCard('MRR',                fmtK(mrrManual),                                     'recorrente/mês',        'var(--green)', true) : ''}
+    ${mrrManual !== null         ? kpiCard('MRR',                fmtK(mrrManual),                                     'recorrente/mês',        'var(--green)') : ''}
     ${churnVal !== null          ? kpiCard('Churn',              churnVal.toString(),                                  'cancelamentos',         'var(--red)') : ''}
     ${conversao !== null         ? kpiCard('Conversão %',        conversao.toFixed(1)+'%',                             'leads convertidos',     'var(--amber)') : ''}
     ${ltvManual !== null         ? kpiCard('LTV',                fmtK(ltvManual),                                     'valor do cliente',      'var(--blue)') : ''}
