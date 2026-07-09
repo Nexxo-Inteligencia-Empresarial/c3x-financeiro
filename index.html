@@ -3190,7 +3190,15 @@ function abrirCC(cc) {
     return getOrcRealSum(kpiId);
   };
 
-  const unidades  = getKpi('unidades');   // média: clientes ativos no período
+  // Unidades/Clientes: métrica de nível (snapshot do mês) — usa último mês não-zero do período
+  // Lê 'real' primeiro; cai em 'plan' se real estiver vazio (usuário pode ter preenchido só o planejado)
+  const _unidData = ccOrcReal['unidades'];
+  const _unidReal = _unidData?.real || Array(12).fill(0);
+  const _unidPlan = _unidData?.plan  || Array(12).fill(0);
+  const _unidSrc  = _unidReal.some(v => v > 0) ? _unidReal : _unidPlan;
+  let unidades = null;
+  for (let m = from; m <= to; m++) if ((_unidSrc[m] || 0) > 0) unidades = _unidSrc[m];
+
   const novos     = getKpi('novos');      // soma: novos no período
   const churnVal  = getKpi('churn');      // soma: cancelamentos no período
   // Inadimplência vem do Nibo automaticamente (isPaid=false + vencido) — já calculado acima em inadimCC
@@ -3245,7 +3253,7 @@ function abrirCC(cc) {
     ${churnVal !== null          ? kpiCard('Churn',              churnVal.toString(),                                  'cancelamentos',         'var(--red)') : ''}
     ${conversao !== null         ? kpiCard('Conversão %',        conversao.toFixed(1)+'%',                             'leads convertidos',     'var(--amber)') : ''}
     ${ltvManual !== null         ? kpiCard('LTV',                fmtK(ltvManual),                                     'valor do cliente',      'var(--blue)') : ''}
-    ${sel.includes('ticket')     ? kpiCard('Ticket Médio',       ticket!==null?fmtK(ticket):'Precisa de Unidades',   'receita ÷ clientes',    'var(--amber)') : ''}
+    ${ticket !== null            ? kpiCard('Ticket Médio',       fmtK(ticket),                                       'receita ÷ clientes',    'var(--amber)') : ''}
     ${sel.includes('cac')        ? kpiCard('CAC',                cac!==null?fmtK(cac):'Precisa de Novos',            'despesa ÷ novos',       'var(--red)') : ''}
     ${sel.includes('roi')        ? kpiCard('ROI %',              roi!==null?roi.toFixed(1)+'%':'—',                  '(rec − desp) ÷ desp',   roi!==null&&roi>=0?'var(--green)':'var(--red)') : ''}
     ${sel.includes('mrr_churn')  ? kpiCard('MRR Churn',          mrr_churn!==null?fmtK(mrr_churn):'Precisa de Churn+Unid.','churn × ticket médio', 'var(--red)') : ''}`;
