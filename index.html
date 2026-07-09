@@ -478,7 +478,7 @@ tr:hover td { background: #f9fafb; }
         <div class="kpi-delta" id="kv-res-delta">—</div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label">Margem de contribuição</div>
+        <div class="kpi-label">Margem operacional</div>
         <div class="kpi-value" id="kv-marg-real">—</div>
         <span class="kpi-tag realized">realizado</span>
         <div class="kpi-proj" id="kv-marg-proj">Projetado: —</div>
@@ -962,8 +962,6 @@ let PROJ = {
   receita:  Array(12).fill(0),
   despesa:  Array(12).fill(0),
   resultado:Array(12).fill(0),
-  custo:    Array(12).fill(0), // custos diretos sem deduções (= Custos Operacionais Nibo)
-  ded:      Array(12).fill(0), // deduções da receita (comissões)
   escola:   Array(12).fill(0),
   prime:    Array(12).fill(0),
   destrava: Array(12).fill(0),
@@ -2819,50 +2817,8 @@ function renderVisao() {
   const despProj = sumRange(PROJ.despesa, from, to);
   const resReal  = recReal - despReal;
   const resProj  = sumRange(PROJ.resultado, from, to);
-
-  // Margem de Contribuição — fórmula Nibo (A+B)/A:
-  // A = Receitas Operacionais líquidas (créditos - deduções da receita)
-  // B = Custos Operacionais diretos
-  const _cachedMarg = JSON.parse(localStorage.getItem('c3x_nibo_cats_v4') || '{"secoes":{}}');
-  const _secoesM    = _cachedMarg.secoes || {};
-  const _recCats    = new Set();
-  const _recDedCats = new Set();
-  const _custoCats  = new Set();
-
-  for (const [nomeSec, info] of Object.entries(_secoesM)) {
-    if (!info || typeof info !== 'object') continue;
-    if (/^receitas operacionais/i.test(nomeSec)) {
-      (info.rec  || []).forEach(c => _recCats.add(c));
-      (info.desp || []).forEach(c => _recDedCats.add(c));
-    } else if (/^custos operacionais/i.test(nomeSec)) {
-      (info.desp || []).forEach(c => _custoCats.add(c));
-    }
-  }
-  if (_custoCats.size === 0) DRE_CUSTOS_CATS.forEach(c => _custoCats.add(c));
-
-  let recBruta = 0, dedReal = 0, custoReal = 0;
-  for (const [cat, arr] of Object.entries(REAL.categoriasRec || {})) {
-    if (_recCats.has(cat) || _recCats.size === 0) {
-      for (let m = from; m <= to; m++) recBruta += arr[m] || 0;
-    }
-  }
-  if (recBruta === 0) recBruta = recReal;
-
-  for (const [cat, arr] of Object.entries(REAL.categorias || {})) {
-    const isDed   = _recDedCats.has(cat);
-    const isCusto = _custoCats.has(cat) && !isDed;
-    for (let m = from; m <= to; m++) {
-      if (isDed)        dedReal   += arr[m] || 0;
-      else if (isCusto) custoReal += arr[m] || 0;
-    }
-  }
-
-  const recLiqReal = recBruta - dedReal;
-  const dedProj    = sumRange(PROJ.ded,   from, to);
-  const custoProj  = sumRange(PROJ.custo, from, to);
-  const recLiqProj = recProj - dedProj;
-  const margReal = recLiqReal > 0 ? (recLiqReal - custoReal) / recLiqReal : 0;
-  const margProj = recLiqProj > 0 ? (recLiqProj - custoProj) / recLiqProj : 0;
+  const margReal = recReal>0 ? resReal/recReal : 0;
+  const margProj = recProj>0 ? resProj/recProj : 0;
 
   const deltaRec  = recProj>0 ? (recReal-recProj)/recProj : 0;
   const deltaDesp = despProj>0 ? (despReal-despProj)/despProj : 0;
@@ -4330,27 +4286,10 @@ function computarProjDeOrcamento() {
   const despCats = Object.keys(plan).filter(c => despSet.has(c));
   const soma = (cats, m) => cats.reduce((s, c) => s + ((plan[c] || [])[m] || 0), 0);
 
-  // Separar deduções de receita dos custos diretos usando secoesAPI (nomes reais do Nibo)
-  const _cachedProj = JSON.parse(localStorage.getItem('c3x_nibo_cats_v4') || '{"secoes":{}}');
-  const _secoesProj = _cachedProj.secoes || {};
-  const _projDedCats  = new Set();
-  const _projCustoCats = new Set();
-  for (const [nomeSec, info] of Object.entries(_secoesProj)) {
-    if (/^receitas operacionais/i.test(nomeSec)) (info.desp || []).forEach(c => _projDedCats.add(c));
-    else if (/^custos operacionais/i.test(nomeSec)) (info.desp || []).forEach(c => _projCustoCats.add(c));
-  }
-  if (_projCustoCats.size === 0) DRE_CUSTOS_CATS.forEach(c => _projCustoCats.add(c));
-  if (_projDedCats.size === 0) { despCats.filter(c => /dedução da receita|comissão/i.test(c)).forEach(c => _projDedCats.add(c)); }
-
-  const dedCats  = despCats.filter(c => _projDedCats.has(c));
-  const cusCats  = despCats.filter(c => _projCustoCats.has(c) && !_projDedCats.has(c));
-
   for (let m = 0; m < 12; m++) {
     PROJ.receita[m]   = soma(recCats, m);
     PROJ.despesa[m]   = soma(despCats, m);
     PROJ.resultado[m] = PROJ.receita[m] - PROJ.despesa[m];
-    PROJ.ded[m]       = soma(dedCats, m);  // deduções (reduz receita bruta → líquida)
-    PROJ.custo[m]     = soma(cusCats, m);  // custos diretos = Custos Operacionais Nibo
     PROJ.escola[m]    = soma(recCats.filter(c => /escola/i.test(c)), m);
     PROJ.prime[m]     = soma(recCats.filter(c => /prime/i.test(c)), m);
     PROJ.destrava[m]  = soma(recCats.filter(c => /destrava|summit|c3x/i.test(c)), m);
