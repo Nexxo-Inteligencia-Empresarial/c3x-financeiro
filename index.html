@@ -2877,9 +2877,9 @@ async function carregarCentrosCusto(creditData, debitData) {
   CC_DATA = {};
   CC_RECEITA = {};
 
-  // Despesas por CC — REGIME DE CAIXA: isPaid=true ou openValue=0
+  // Despesas por CC — REGIME DE CAIXA: isPaid=true ou isEntry=true (entries realizados)
   for (const item of (debitData.items||[])) {
-    const pago = item.isPaid === true || (item.isPaid == null && Math.abs(item.openValue||0) === 0 && Math.abs(item.value||0) > 0);
+    const pago = item.isPaid === true || item.isEntry === true;
     if (!pago) continue;
     const ccs = item.costCenters || [];
     if (ccs.length === 0) continue;
@@ -3153,14 +3153,29 @@ function abrirCC(cc) {
     return sumRange((carregarConfig().ccDados[cc]||{})[kpiId]||Array(12).fill(0), from, to);
   };
   // Agrega conforme o tipo do KPI: 'avg' = média dos meses preenchidos, 'sum' = soma total
+  // ORC_KPIS (operacionais) mostram automaticamente se há dados no orçamento, sem precisar de config
+  const _orcKpiIds = new Set(ORC_KPIS.map(k => k.id));
   const getKpi = (kpiId) => {
-    if (!kpisSel.includes(kpiId)) return null;
     const def = ORC_KPIS.find(k => k.id === kpiId);
+    const inConfig = kpisSel.includes(kpiId);
+    // Para KPIs operacionais: mostrar se em config OU se há dados no orçamento
+    if (_orcKpiIds.has(kpiId)) {
+      if (!inConfig) {
+        const orcArr = ccOrcReal[kpiId];
+        const hasData = orcArr && (
+          (orcArr.real || []).some(v => v > 0) || (orcArr.plan || []).some(v => v > 0)
+        );
+        if (!hasData && !def?.autoReal) return null;
+      }
+    } else {
+      // KPIs calculados: só mostrar se em config
+      if (!inConfig) return null;
+    }
     if (def?.agr === 'avg') {
       // autoReal: usa CC_RECEITA (Nibo); manual: usa dados digitados pelo usuário
       const arr = def?.autoReal
         ? (CC_RECEITA[cc] || Array(12).fill(0))
-        : (ccOrcReal[kpiId]?.real || (carregarConfig().ccDados[cc]||{})[kpiId] || Array(12).fill(0));
+        : (ccOrcReal[kpiId]?.real || Array(12).fill(0));
       const vals = [];
       for (let m = from; m <= to; m++) if ((arr[m] || 0) > 0) vals.push(arr[m]);
       return vals.length > 0 ? vals.reduce((a,b) => a+b, 0) / vals.length : null;
@@ -3215,14 +3230,14 @@ function abrirCC(cc) {
     ${meta_rec !== null          ? kpiCard('Meta de Receita',    fmtFull(meta_rec),                                   'Orç. Geral',            '#7c3aed') : ''}
     ${sel.includes('ating_meta') ? kpiCard('Atingimento Meta %', ating_meta!==null?ating_meta.toFixed(1)+'%':'Sem meta', 'receita total ÷ meta', (ating_meta||0)>=100?'var(--green)':'var(--amber)') : ''}
     ${sel.includes('arpu')       ? kpiCard('ARPU',               arpu!==null?fmtK(arpu):'Precisa de Unidades',        'receita total ÷ clientes','var(--amber)') : ''}
-    ${sel.includes('unidades')   ? kpiCard('Unidades / Clientes',unidades!==null?Math.round(unidades).toString():'—', 'ativos no período',     'var(--blue)') : ''}
-    ${sel.includes('novos')      ? kpiCard('Novos no período',   novos!==null?novos.toString():'—',                   'aquisições',            'var(--blue)') : ''}
-    ${sel.includes('inadim')     ? kpiCard('Inadimplência',      inadim>0?fmtFull(inadim):'R$ 0,00',                 'vencido não pago',      inadim>0?'var(--red)':'var(--green)') : ''}
+    ${unidades !== null          ? kpiCard('Unidades / Clientes',Math.round(unidades).toString(),                     'ativos no período',     'var(--blue)') : ''}
+    ${novos !== null             ? kpiCard('Novos no período',   novos.toString(),                                     'aquisições',            'var(--blue)') : ''}
+    ${inadimCC > 0               ? kpiCard('Inadimplência',      fmtFull(inadim),                                     'vencido não pago',      'var(--red)') : ''}
     ${sel.includes('inadim_pct') ? kpiCard('Inadimplência %',    inadim_pct!==null?inadim_pct.toFixed(1)+'%':'—',    'do total faturado',     (inadim_pct||0)>10?'var(--red)':'var(--amber)') : ''}
-    ${sel.includes('mrr')        ? kpiCard('MRR',                mrrManual!==null?fmtK(mrrManual):'—',               'recorrente/mês',        'var(--green)', true) : ''}
-    ${sel.includes('churn')      ? kpiCard('Churn',              churnVal!==null?churnVal.toString():'—',             'cancelamentos',         'var(--red)') : ''}
-    ${sel.includes('conversao')  ? kpiCard('Conversão %',        conversao!==null?conversao.toFixed(1)+'%':'—',       'leads convertidos',     'var(--amber)') : ''}
-    ${sel.includes('ltv')        ? kpiCard('LTV',                ltvManual!==null?fmtK(ltvManual):'—',               'valor do cliente',      'var(--blue)') : ''}
+    ${mrrManual !== null         ? kpiCard('MRR',                fmtK(mrrManual),                                     'recorrente/mês',        'var(--green)', true) : ''}
+    ${churnVal !== null          ? kpiCard('Churn',              churnVal.toString(),                                  'cancelamentos',         'var(--red)') : ''}
+    ${conversao !== null         ? kpiCard('Conversão %',        conversao.toFixed(1)+'%',                             'leads convertidos',     'var(--amber)') : ''}
+    ${ltvManual !== null         ? kpiCard('LTV',                fmtK(ltvManual),                                     'valor do cliente',      'var(--blue)') : ''}
     ${sel.includes('ticket')     ? kpiCard('Ticket Médio',       ticket!==null?fmtK(ticket):'Precisa de Unidades',   'receita ÷ clientes',    'var(--amber)') : ''}
     ${sel.includes('cac')        ? kpiCard('CAC',                cac!==null?fmtK(cac):'Precisa de Novos',            'despesa ÷ novos',       'var(--red)') : ''}
     ${sel.includes('roi')        ? kpiCard('ROI %',              roi!==null?roi.toFixed(1)+'%':'—',                  '(rec − desp) ÷ desp',   roi!==null&&roi>=0?'var(--green)':'var(--red)') : ''}
