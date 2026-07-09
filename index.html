@@ -3171,6 +3171,13 @@ function abrirCC(cc) {
       // KPIs calculados: só mostrar se em config
       if (!inConfig) return null;
     }
+    if (def?.agr === 'last') {
+      // Nível/estoque: retorna o último valor não-zero do período (snapshot do mês mais recente)
+      const arr = ccOrcReal[kpiId]?.real || Array(12).fill(0);
+      let lastVal = null;
+      for (let m = from; m <= to; m++) if ((arr[m] || 0) > 0) lastVal = arr[m];
+      return lastVal;
+    }
     if (def?.agr === 'avg') {
       // autoReal: usa CC_RECEITA (Nibo); manual: usa dados digitados pelo usuário
       const arr = def?.autoReal
@@ -3565,7 +3572,7 @@ function sair() {
 ═══════════════════════════════════════════ */
 
 const ORC_KPIS = [
-  { id:'unidades',  label:'Unidades / Clientes ativos', icon:'👥', unit:'un',  autoReal: false, agr:'avg' }, // nível: média do período
+  { id:'unidades',  label:'Unidades / Clientes ativos', icon:'👥', unit:'un',  autoReal: false, agr:'last' }, // nível: valor do último mês do período
   { id:'novos',     label:'Novos no mês',               icon:'➕', unit:'un',  autoReal: false, agr:'sum' }, // fluxo: soma
   { id:'churn',     label:'Churn (cancelamentos)',      icon:'📉', unit:'un',  autoReal: false, agr:'sum' }, // fluxo: soma
   { id:'mrr',       label:'MRR (R$)',                   icon:'💵', unit:'R$',  autoReal: true,  autoDesc:'Receita Nibo', agr:'avg' },
