@@ -475,7 +475,7 @@ tr:hover td { background: #f9fafb; }
         <div class="kpi-delta" id="kv-res-delta">—</div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label">Margem operacional</div>
+        <div class="kpi-label">Margem de contribuição</div>
         <div class="kpi-value" id="kv-marg-real">—</div>
         <span class="kpi-tag realized">realizado</span>
         <div class="kpi-proj" id="kv-marg-proj">Projetado: —</div>
@@ -2347,8 +2347,16 @@ function renderVisao() {
   const despProj = sumRange(PROJ.despesa, from, to);
   const resReal  = recReal - despReal;
   const resProj  = sumRange(PROJ.resultado, from, to);
-  const margReal = recReal>0 ? resReal/recReal : 0;
-  const margProj = recProj>0 ? resProj/recProj : 0;
+
+  // Margem de contribuição = (Receita - Custos Operacionais) / Receita
+  const _plan = carregarOrcGeral();
+  const _cusCats = DRE_CUSTOS_SUBGROUPS.flatMap(sg => sg.cats);
+  const custosReal = _cusCats.reduce((s, cat) => s + sumRange(REAL.categorias[cat] || Array(12).fill(0), from, to), 0);
+  const custosProj = _cusCats.reduce((s, cat) => s + sumRange(_plan[cat] || Array(12).fill(0), from, to), 0);
+  const margContribReal = recReal - custosReal;
+  const margContribProj = recProj - custosProj;
+  const margReal = recReal > 0 ? margContribReal / recReal : 0;
+  const margProj = recProj > 0 ? margContribProj / recProj : 0;
 
   const deltaRec  = recProj>0 ? (recReal-recProj)/recProj : 0;
   const deltaDesp = despProj>0 ? (despReal-despProj)/despProj : 0;
