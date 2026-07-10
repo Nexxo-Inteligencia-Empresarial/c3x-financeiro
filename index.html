@@ -424,6 +424,8 @@ tr:hover td { background: #f9fafb; }
       <div style="display:flex;align-items:center;gap:6px;margin-left:8px;padding-left:12px;border-left:1px solid var(--border)">
         <span class="period-label">Ano:</span>
         <select class="month-select" id="topbar-ano" onchange="setAno(this.value)" style="padding:4px 10px;font-size:12px">
+          <option value="2028">2028</option>
+          <option value="2027">2027</option>
           <option value="2026">2026</option>
           <option value="2025">2025</option>
           <option value="2024">2024</option>
@@ -703,7 +705,7 @@ tr:hover td { background: #f9fafb; }
     <div class="page-header">
       <div class="page-badge">Planejamento</div>
       <h1 class="page-title">Orçamento</h1>
-      <p class="page-sub">Planejado vs Realizado por serviço — indicadores operacionais Jan a Dez 2026.</p>
+      <p class="page-sub" id="orc-page-sub">Planejado vs Realizado por serviço — indicadores operacionais Jan a Dez 2026.</p>
     </div>
 
     <!-- Seletor de serviço -->
@@ -3447,14 +3449,15 @@ function setMes(val) {
 
 function setAno(val) {
   ANO_FILTRO = parseInt(val);
-  // Reset período para YTD ao trocar o ano, a menos que seja o ano atual (mantém YTD real)
   const anoAtual = new Date().getFullYear();
   if (ANO_FILTRO !== anoAtual) {
     PERIODO = 'ano';
     document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
     document.querySelector('.chip[onclick*="\'ano\'"]')?.classList.add('active');
   }
-  recarregarManual();
+  const subEl = document.getElementById('orc-page-sub');
+  if (subEl) subEl.textContent = `Planejado vs Realizado por serviço — indicadores operacionais Jan a Dez ${ANO_FILTRO}.`;
+  sincronizarOrcDeKV().then(() => recarregarManual());
 }
 
 /* ═══════════════════════════════════════════
@@ -3813,20 +3816,23 @@ const DRE_DESPESAS_SUBGROUPS = [
 /* Categorias de INVESTIMENTOS — nomes exatos do Nibo */
 const DRE_INV_CATS = ['Adiantamento de Lucros', 'Equipamentos / Utensílios Cozinha'];
 
+function _orcGeralKey() { return `c3x_orc_geral_${ANO_FILTRO}`; }
+function _orcCCKey()    { return `c3x_orcamento_${ANO_FILTRO}`; }
+
 function carregarOrcGeral() {
-  const s = localStorage.getItem('c3x_orc_geral_v1');
+  const s = localStorage.getItem(_orcGeralKey());
   return s ? JSON.parse(s) : {};
 }
 
 async function sincronizarOrcDeKV() {
   try {
-    const r = await fetch('/api/kv?key=orc_geral');
+    const r = await fetch(`/api/kv?key=orc_geral_${ANO_FILTRO}`);
     if (!r.ok) return;
     const { value } = await r.json();
     if (value && typeof value === 'object' && Object.keys(value).length > 0) {
-      localStorage.setItem('c3x_orc_geral_v1', JSON.stringify(value));
+      localStorage.setItem(_orcGeralKey(), JSON.stringify(value));
     } else {
-      const local = localStorage.getItem('c3x_orc_geral_v1');
+      const local = localStorage.getItem(_orcGeralKey());
       if (local) await orcGeralParaKV(JSON.parse(local));
     }
   } catch (e) {
@@ -3867,13 +3873,13 @@ async function sincronizarOrcDeKV() {
   }
 
   try {
-    const r = await fetch('/api/kv?key=orcamento_cc');
+    const r = await fetch(`/api/kv?key=orcamento_cc_${ANO_FILTRO}`);
     if (r.ok) {
       const { value } = await r.json();
       if (value && typeof value === 'object' && Object.keys(value).length > 0) {
-        localStorage.setItem('c3x_orcamento_v1', JSON.stringify(value));
+        localStorage.setItem(_orcCCKey(), JSON.stringify(value));
       } else {
-        const local = localStorage.getItem('c3x_orcamento_v1');
+        const local = localStorage.getItem(_orcCCKey());
         if (local) await orcamentoParaKV(JSON.parse(local));
       }
     }
@@ -3894,10 +3900,10 @@ async function _kvPost(key, data) {
   return r.ok;
 }
 
-async function orcGeralParaKV(data)        { try { await _kvPost('orc_geral',    data); } catch(e){ console.warn('[KV] orc_geral save:', e.message); } }
+async function orcGeralParaKV(data)        { try { await _kvPost(`orc_geral_${ANO_FILTRO}`,    data); } catch(e){ console.warn('[KV] orc_geral save:', e.message); } }
 async function aparenciaParaKV(nome, logo) { try { await _kvPost('aparencia',    { nome: nome||'', logo: logo||null }); } catch(e){ console.warn('[KV] aparencia save:', e.message); } }
 async function configParaKV(data)          { try { await _kvPost('config_kpis',  data); } catch(e){ console.warn('[KV] config_kpis save:', e.message); } }
-async function orcamentoParaKV(data)       { try { await _kvPost('orcamento_cc', data); } catch(e){ console.warn('[KV] orcamento_cc save:', e.message); } }
+async function orcamentoParaKV(data)       { try { await _kvPost(`orcamento_cc_${ANO_FILTRO}`, data); } catch(e){ console.warn('[KV] orcamento_cc save:', e.message); } }
 
 function salvarOrcGeral(silent=false) {
   const inputs = document.querySelectorAll('.orc-geral-input');
@@ -3909,7 +3915,7 @@ function salvarOrcGeral(silent=false) {
     if (!data[cat]) data[cat] = Array(12).fill(0);
     data[cat][mes] = parseFloat(inp.value) || 0;
   });
-  localStorage.setItem('c3x_orc_geral_v1', JSON.stringify(data));
+  localStorage.setItem(_orcGeralKey(), JSON.stringify(data));
   atualizarTotaisOrcGeral(data);
   computarProjDeOrcamento();
   if (!silent) {
@@ -4181,7 +4187,7 @@ function renderOrcGeral() {
   document.getElementById('orc-container').innerHTML = `
     <div style="background:white;border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--shadow)">
       <div style="padding:0.75rem 1.25rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px">
-        <span style="font-size:14px;font-weight:700;color:var(--text)">Planejamento Orçamentário 2026</span>
+        <span style="font-size:14px;font-weight:700;color:var(--text)">Planejamento Orçamentário ${ANO_FILTRO}</span>
         <span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0">${modoLabel}</span>
       </div>
       <div style="overflow-x:auto;overflow-y:auto;max-height:calc(100vh - 220px)">
@@ -4198,7 +4204,7 @@ function renderOrcGeral() {
 }
 
 function carregarOrcamento() {
-  const saved = localStorage.getItem('c3x_orcamento_v1');
+  const saved = localStorage.getItem(_orcCCKey());
   return saved ? JSON.parse(saved) : {};
 }
 
@@ -4225,7 +4231,7 @@ function salvarOrcamento(silent=false) {
     const unit = inp.dataset.unit;
     data[cc][kpi][tipo][mes] = unit === 'R$' ? parseBRL(inp.value) : unit === '%' ? parsePct(inp.value) : parseFloat(inp.value) || 0;
   });
-  localStorage.setItem('c3x_orcamento_v1', JSON.stringify(data));
+  localStorage.setItem(_orcCCKey(), JSON.stringify(data));
   if (!silent) {
     orcamentoParaKV(data);
     const msg = document.getElementById('orc-saved-msg');
