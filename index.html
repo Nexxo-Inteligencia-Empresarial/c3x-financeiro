@@ -4181,7 +4181,7 @@ function renderOrcGeral() {
   const secoesVisiveis = secoesRender.filter(s => s.cats.length > 0);
   const modoLabel = Object.keys(secoesAPI).length > 0
     ? `API Nibo ✓ ${secoesVisiveis.map(s=>s.label).join(' → ')}`
-    : '⚠ Fallback hardcoded';
+    : '';
   console.log('[OrcGeral] renderizado:', secoesRender.map(s=>`${s.label}(${s.cats.length})`).join(' | '));
 
   document.getElementById('orc-container').innerHTML = `
