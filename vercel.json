@@ -1,5 +1,13 @@
 {
   "rewrites": [
-    { "source": "/api/kv/:path*", "destination": "/api/kv" }
+    { "source": "/api/kv/:path*",          "destination": "/api/kv" },
+    { "source": "/api/scrape/:path*",      "destination": "/api/scrape" },
+    { "source": "/api/nibo-login/:path*",  "destination": "/api/nibo-login" }
+  ],
+  "functions": {
+    "api/scrape.js": { "maxDuration": 60 }
+  },
+  "crons": [
+    { "path": "/api/scrape", "schedule": "0 10 * * *" }
   ]
 }

@@ -844,7 +844,7 @@ tr:hover td { background: #f9fafb; }
             <svg viewBox="0 0 24 24" width="18" height="18" style="fill:var(--blue);flex-shrink:0"><path d="M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm14 3a4 4 0 100-8 4 4 0 000 8z"/></svg>
             Nibo (Scraper)
           </div>
-          <div class="table-sub">Dados coletados pelo Claude via Playwright e salvos no KV</div>
+          <div class="table-sub">Dados coletados pelo scraper automático e salvos no KV</div>
         </div>
         <div id="integ-nibo-badge" style="font-size:12px;font-weight:600;padding:4px 10px;border-radius:20px;background:#dcfce7;color:#16a34a">● Ativo</div>
       </div>
@@ -854,6 +854,40 @@ tr:hover td { background: #f9fafb; }
           style="padding:9px 20px;background:var(--blue);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">
           Recarregar dados do KV
         </button>
+      </div>
+    </div>
+
+    <!-- Nibo Auto-Atualização (credenciais para o cron) -->
+    <div class="table-card" style="margin-bottom:1.5rem;max-width:640px">
+      <div class="table-header">
+        <div>
+          <div class="table-title" style="display:flex;align-items:center;gap:10px">
+            <svg viewBox="0 0 24 24" width="18" height="18" style="fill:var(--green);flex-shrink:0"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+            Auto-Atualização (Cron Diário)
+          </div>
+          <div class="table-sub">Conecte sua conta Nibo para atualização automática todo dia às 7h</div>
+        </div>
+        <div id="integ-cron-badge" style="font-size:12px;font-weight:600;padding:4px 10px;border-radius:20px;background:#fef3c7;color:#d97706">● Aguardando</div>
+      </div>
+      <div style="padding:1.25rem">
+        <p id="integ-cron-status" style="font-size:13px;color:var(--text2);margin:0 0 14px">Informe seu login do Nibo para ativar a atualização automática diária.</p>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+          <input id="nibo-login-email" type="email" placeholder="E-mail do Nibo" autocomplete="off"
+            style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;width:100%;box-sizing:border-box">
+          <input id="nibo-login-pass" type="password" placeholder="Senha do Nibo" autocomplete="off"
+            style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;width:100%;box-sizing:border-box">
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button onclick="integConectarNibo()"
+            style="padding:9px 20px;background:var(--green);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">
+            Conectar Nibo
+          </button>
+          <button onclick="integTestarCron()"
+            style="padding:9px 16px;background:var(--bg2);color:var(--text1);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">
+            Testar agora
+          </button>
+        </div>
+        <p id="integ-cron-msg" style="font-size:12px;min-height:16px;margin:8px 0 0"></p>
       </div>
     </div>
 
@@ -1078,6 +1112,17 @@ async function carregarDadosKV() {
   RAW_DEBITS  = value.debits  || [];
   console.log('[KV] créditos:', RAW_CREDITS.length, '| débitos:', RAW_DEBITS.length, '| atualizado:', value.updatedAt || '?');
 
+  // Salva token Nibo no KV para o cron de scraping automático (fire-and-forget)
+  const _niboTok = localStorage.getItem('niboToken');
+  const _niboRef = localStorage.getItem('niboRefreshToken');
+  if (_niboTok) {
+    fetch('/api/kv?key=nibo_auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-nibo-token': 'c3x-scraper-2026' },
+      body: JSON.stringify({ token: _niboTok, refreshToken: _niboRef || null, savedAt: new Date().toISOString() })
+    }).catch(() => {});
+  }
+
   // Processar categorias se disponíveis no snapshot
   const catItems = value.categories || [];
   if (catItems.length > 0) {
@@ -1115,12 +1160,11 @@ async function carregarDadosKV() {
   REAL.categorias   = {};
   REAL.categoriasRec = {};
 
-  // REGIME DE CAIXA — créditos
+  // REGIME DE CAIXA — créditos (apenas realizados; scraper usa openValue=0 para tudo)
   for (const item of RAW_CREDITS) {
     const isPaidTrue = item.isPaid === true || item.isEntry === true;
-    const v = isPaidTrue
-      ? Math.abs(item.value||0)
-      : Math.abs(item.value||0) - Math.abs(item.openValue||0);
+    if (!isPaidTrue) continue;
+    const v = Math.abs(item.value||0);
     if (v <= 0) continue;
     const d = _dataCaixa(item);
     if (!d) continue;
@@ -2031,8 +2075,8 @@ function fluxoAgregarDados(semanas, cc) {
     const stake   = item.stakeholder?.name || '—';
     const desc    = item.description || '—';
     const isPaidTrue = item.isPaid === true || item.isEntry === true;
-    const vReal   = isPaidTrue ? Math.abs(item.value||0) : Math.abs(item.value||0) - Math.abs(item.openValue||0);
-    const vPrev   = !isPaidTrue ? Math.abs(item.openValue||0) : 0;
+    const vReal   = isPaidTrue ? Math.abs(item.value||0) : 0;
+    const vPrev   = !isPaidTrue ? Math.abs(item.value||0) : 0;
     if (vReal > 0) {
       const dStr = _dataCaixa(item); if (!dStr) continue;
       const d = parseLocal(dStr); const s = findSem(d); if (!s) continue;
@@ -2072,29 +2116,21 @@ function fluxoAgregarDados(semanas, cc) {
 
   for (const s of semanas) s.lancamentos.sort((a, b) => a.data - b.data);
 
-  const _ancoraMes = (SALDO_ABERTURA_MENSAL[ANO_FILTRO] || {})[from + 1];
-  let acum = _ancoraMes != null ? _ancoraMes : 0;
-  if (_ancoraMes == null && semanas.length > 0) {
-    const periodoInicio = semanas[0].start;
-    if (periodoInicio > jan1) {
-      for (const item of RAW_CREDITS) {
-        const ok = item.isPaid===true||item.isEntry===true; if (!ok) continue;
-        const vr = Math.abs(item.value||0); if (!vr) continue;
-        const ds = _dataCaixa(item); if (!ds) continue;
-        const dt = parseLocal(ds);
-        if (dt.getFullYear()===ANO_FILTRO && dt>=jan1 && dt<periodoInicio) acum += vr;
-      }
-      for (const item of RAW_DEBITS) {
-        const ok = item.isPaid===true||(item.isPaid==null&&Math.abs(item.openValue||0)===0&&Math.abs(item.value||0)>0);
-        if (!ok) continue;
-        const ds = item.isPaid===true?(item.paymentDate||item.dueDate||item.scheduleDate):(item.dueDate||item.scheduleDate);
-        if (!ds) continue;
-        const dt = parseLocal(ds);
-        if (dt.getFullYear()===ANO_FILTRO && dt>=jan1 && dt<periodoInicio) acum -= Math.abs(item.value||0);
-      }
+  const anchorData = SALDO_ABERTURA_MENSAL[ANO_FILTRO] || {};
+  let acum = anchorData[from + 1] ?? 0;
+  let lastAnchoredMes = from; // 0-based; mês já ancorado — evita re-ancorar 2x no mesmo mês
+  for (const s of semanas) {
+    // Re-ancora no início de cada novo mês quando há fechamento verificado disponível.
+    // Corrige deriva acumulada causada por lançamentos incompletos no extrato Nibo.
+    const sMes = s.start.getMonth(); // 0-based
+    if (sMes !== lastAnchoredMes) {
+      const ancora = anchorData[sMes + 1]; // SALDO_ABERTURA_MENSAL usa chave 1-based
+      if (ancora != null) { acum = ancora; }
+      lastAnchoredMes = sMes;
     }
+    acum += s.entradas_real - s.saidas_real;
+    s.saldo_acum = acum;
   }
-  for (const s of semanas) { acum += s.entradas_real - s.saidas_real; s.saldo_acum = acum; }
 
   return semanas;
 }
@@ -2348,32 +2384,29 @@ function renderVisao() {
   const resReal  = recReal - despReal;
   const resProj  = sumRange(PROJ.resultado, from, to);
 
-  // Margem de contribuição — fórmula Nibo:
-  //   Receita Líquida = Receita Bruta - Deduções (groupRef='1', type='out')
-  //   Custos Operacionais = débitos groupRef='2'
-  //   Margem % = (Rec. Líquida - Custos) / Rec. Líquida
-  let _deducoes = Array(12).fill(0), _custos = Array(12).fill(0);
-  for (const item of RAW_DEBITS) {
-    const isPaidTrue = item.isPaid === true || item.isEntry === true;
-    if (!isPaidTrue) continue;
-    const d = _dataCaixa(item); if (!d) continue;
-    const dt = new Date(d); if (dt.getFullYear() !== ANO_FILTRO) continue;
-    const m = dt.getMonth();
-    const v = Math.abs(item.value || 0);
-    const ref = item.categories?.[0]?.groupRef;
-    if (ref === '1') _deducoes[m] += v;
-    else if (ref === '2') _custos[m] += v;
-  }
-  const deducoesReal = sumRange(_deducoes, from, to);
-  const custosReal   = sumRange(_custos,   from, to);
-  const recLiqReal   = recReal - deducoesReal;
-  const margReal     = recLiqReal > 0 ? (recLiqReal - custosReal) / recLiqReal : 0;
-  const margProj     = recProj   > 0 ? resProj / recProj : 0;
+  // Margem de contribuição — fórmula DRE:
+  //   Receita Líquida = Receita Bruta − Deduções da Receita (subgrupo "Comercial")
+  //   Margem % = (Receita Bruta − Custos Totais) / Receita Líquida
+  const _planMarg  = carregarOrcGeral();
+  const _cusCats   = DRE_CUSTOS_SUBGROUPS.flatMap(sg => sg.cats);
+  const _dedCats   = (DRE_CUSTOS_SUBGROUPS.find(sg => sg.label === 'Comercial') || {cats:[]}).cats;
+  const custosReal = _cusCats.reduce((sum, cat) =>
+    sum + sumRange(REAL.categorias[cat] || Array(12).fill(0), from, to), 0);
+  const custosProj = _cusCats.reduce((sum, cat) =>
+    sum + sumRange(_planMarg[cat] || Array(12).fill(0), from, to), 0);
+  const deducoesReal = _dedCats.reduce((sum, cat) =>
+    sum + sumRange(REAL.categorias[cat] || Array(12).fill(0), from, to), 0);
+  const deducoesProj = _dedCats.reduce((sum, cat) =>
+    sum + sumRange(_planMarg[cat] || Array(12).fill(0), from, to), 0);
+  const recLiqReal = recReal - deducoesReal;
+  const recLiqProj = recProj - deducoesProj;
+  const margReal   = recLiqReal > 0 ? (recReal - custosReal) / recLiqReal : 0;
+  const margProj   = recLiqProj > 0 ? (recProj - custosProj) / recLiqProj : 0;
 
   const deltaRec  = recProj>0 ? (recReal-recProj)/recProj : 0;
   const deltaDesp = despProj>0 ? (despReal-despProj)/despProj : 0;
   const deltaRes  = resProj>0 ? (resReal-resProj)/resProj : 0;
-  const deltaMarg = margProj>0 ? (margReal-margProj)/margProj : 0;
+  const deltaMarg = margReal - margProj; // diferença em pontos percentuais (pp)
 
   document.getElementById('kv-rec-real').textContent  = fmtK(recReal);
   document.getElementById('kv-rec-proj').textContent  = 'Projetado: '+fmtK(recProj);
@@ -2392,7 +2425,8 @@ function renderVisao() {
 
   document.getElementById('kv-marg-real').textContent  = fmtPct(margReal);
   document.getElementById('kv-marg-proj').textContent  = 'Projetado: '+fmtPct(margProj);
-  document.getElementById('kv-marg-delta').textContent = fmtPct(deltaMarg)+' vs projetado';
+  const _ppStr = (deltaMarg>=0?'+':'-')+Math.abs(deltaMarg*100).toFixed(1)+' pp vs projetado';
+  document.getElementById('kv-marg-delta').textContent = _ppStr;
   document.getElementById('kv-marg-delta').className   = 'kpi-delta '+(deltaMarg>=0?'pos':'neg');
 
   const labels = MESES.slice(from, to+1);
@@ -2910,6 +2944,9 @@ async function carregarCentrosCusto(creditData, debitData) {
     if (ccs.length === 0) continue;
     const v    = Math.abs(item.value||0);
     const openV = Math.abs(item.openValue||0);
+    // Scraper salva projetos como value=openValue_original, openValue=0 para evitar
+    // duplicação no fluxo de caixa. Para inadimplência, o valor em aberto é openV || v.
+    const inadimV = !item.isPaid ? (openV > 0 ? openV : v) : 0;
     const dueDate = item.dueDate ? new Date(item.dueDate) : null;
 
     for (const cc of ccs) {
@@ -2927,15 +2964,15 @@ async function carregarCentrosCusto(creditData, debitData) {
       }
 
       // CC_INADIM: mensalização em 2026 (para KPIs de serviço)
-      if (!item.isPaid && dueDate && dueDate < hoje && openV > 0 && dueDate.getFullYear() === ANO_FILTRO) {
+      if (!item.isPaid && dueDate && dueDate < hoje && inadimV > 0 && dueDate.getFullYear() === ANO_FILTRO) {
         if (!CC_INADIM[nome]) CC_INADIM[nome] = { total: 0, porMes: Array(12).fill(0) };
-        CC_INADIM[nome].total += openV;
-        CC_INADIM[nome].porMes[dueDate.getMonth()] += openV;
+        CC_INADIM[nome].total += inadimV;
+        CC_INADIM[nome].porMes[dueDate.getMonth()] += inadimV;
       }
     }
 
     // INADIM_ITENS: todos os vencidos não pagos (qualquer ano), um item por CC
-    if (!item.isPaid && dueDate && dueDate < hoje && openV > 0) {
+    if (!item.isPaid && dueDate && dueDate < hoje && inadimV > 0) {
       const diasAtraso = Math.floor((hoje - dueDate) / 86400000);
       const scheduleId = item.scheduleId || (item.dueDate + '_' + item.value);
       for (const cc of ccs) {
@@ -2945,7 +2982,7 @@ async function carregarCentrosCusto(creditData, debitData) {
           cliente:    item.stakeholder?.name || '—',
           descricao:  item.description || '—',
           cc:         nome,
-          valor:      openV,
+          valor:      inadimV,
           vencimento: dueDate,
           diasAtraso
         });
@@ -3275,7 +3312,7 @@ function _abrirCC(cc) {
     ${novos !== null             ? kpiCard('Novos no período',   novos.toString(),                                     'aquisições',            'var(--blue)') : ''}
     ${inadimCC > 0               ? kpiCard('Inadimplência',      fmtFull(inadim),                                     'vencido não pago',      'var(--red)') : ''}
     ${sel.includes('inadim_pct') ? kpiCard('Inadimplência %',    inadim_pct!==null?inadim_pct.toFixed(1)+'%':'—',    'do total faturado',     (inadim_pct||0)>10?'var(--red)':'var(--amber)') : ''}
-    ${mrrManual !== null         ? kpiCard('MRR',                fmtK(mrrManual),                                     'recorrente/mês',        'var(--green)') : ''}
+    ${sel.includes('mrr') && mrrManual !== null ? kpiCard('MRR',  fmtK(mrrManual),                                     'recorrente/mês',        'var(--green)') : ''}
     ${churnVal !== null          ? kpiCard('Churn',              churnVal.toString(),                                  'cancelamentos',         'var(--red)') : ''}
     ${conversao !== null         ? kpiCard('Conversão %',        conversao.toFixed(1)+'%',                             'leads convertidos',     'var(--amber)') : ''}
     ${ltvManual !== null         ? kpiCard('LTV',                fmtK(ltvManual),                                     'valor do cliente',      'var(--blue)') : ''}
@@ -3438,6 +3475,74 @@ function integAtualizarBadges() {
     if (logoFilename) logoFilename.textContent = 'Logo atual';
     if (logoRemove) logoRemove.style.display = 'inline-block';
   }
+  integCheckCronStatus();
+}
+
+async function integConectarNibo() {
+  const email = document.getElementById('nibo-login-email').value.trim();
+  const pass  = document.getElementById('nibo-login-pass').value;
+  const msgEl = document.getElementById('integ-cron-msg');
+  if (!email || !pass) { msgEl.style.color='var(--red)'; msgEl.textContent='Preencha e-mail e senha.'; return; }
+  msgEl.style.color='var(--text2)'; msgEl.textContent='Conectando…';
+  try {
+    const r = await fetch('/api/nibo-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: pass })
+    });
+    const d = await r.json();
+    if (!r.ok || !d.ok) {
+      msgEl.style.color='var(--red)'; msgEl.textContent='Erro: ' + (d.error || 'falha ao autenticar');
+      return;
+    }
+    document.getElementById('nibo-login-email').value = '';
+    document.getElementById('nibo-login-pass').value = '';
+    msgEl.style.color='var(--green)'; msgEl.textContent='✓ Conectado! Cron ativo — atualiza todo dia às 7h.';
+    document.getElementById('integ-cron-badge').style.background='#dcfce7';
+    document.getElementById('integ-cron-badge').style.color='#16a34a';
+    document.getElementById('integ-cron-badge').textContent='● Ativo';
+    document.getElementById('integ-cron-status').textContent='Autenticação salva. Atualização automática diária às 7h (Brasília).';
+  } catch(e) {
+    msgEl.style.color='var(--red)'; msgEl.textContent='Erro de rede: ' + e.message;
+  }
+}
+
+async function integTestarCron() {
+  const msgEl = document.getElementById('integ-cron-msg');
+  msgEl.style.color='var(--text2)'; msgEl.textContent='Executando scraper… (pode levar 30-60s)';
+  try {
+    const r = await fetch('/api/scrape', {
+      method: 'GET',
+      headers: { 'x-nibo-token': 'c3x-scraper-2026' }
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      msgEl.style.color='var(--red)'; msgEl.textContent='Erro: ' + (d.error || r.status);
+      return;
+    }
+    msgEl.style.color='var(--green)'; msgEl.textContent=`✓ Scraper OK — ${d.credits} créditos, ${d.debits} débitos. Recarregando…`;
+    setTimeout(() => recarregar(), 1500);
+  } catch(e) {
+    msgEl.style.color='var(--red)'; msgEl.textContent='Erro: ' + e.message;
+  }
+}
+
+async function integCheckCronStatus() {
+  try {
+    const r = await fetch('/api/kv?key=nibo_auth');
+    const { value } = await r.json();
+    const badge = document.getElementById('integ-cron-badge');
+    const status = document.getElementById('integ-cron-status');
+    if (!badge || !status) return;
+    if (value && value.token) {
+      const d = value.savedAt ? new Date(value.savedAt).toLocaleString('pt-BR') : '?';
+      badge.style.background='#dcfce7'; badge.style.color='#16a34a'; badge.textContent='● Ativo';
+      status.textContent=`Token salvo em ${d}. Atualização automática diária às 7h.`;
+    } else {
+      badge.style.background='#fef3c7'; badge.style.color='#d97706'; badge.textContent='● Aguardando';
+      status.textContent='Informe seu login do Nibo para ativar a atualização automática diária.';
+    }
+  } catch(e) {}
 }
 
 function integSalvarKVToken() {
