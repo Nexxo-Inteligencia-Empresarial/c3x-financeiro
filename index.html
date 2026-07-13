@@ -3819,12 +3819,25 @@ const DRE_INV_CATS = ['Adiantamento de Lucros', 'Equipamentos / Utensílios Cozi
 function _orcGeralKey() { return `c3x_orc_geral_${ANO_FILTRO}`; }
 function _orcCCKey()    { return `c3x_orcamento_${ANO_FILTRO}`; }
 
+function _migrarLocalStorageOrc() {
+  if (!localStorage.getItem('c3x_orc_geral_2026')) {
+    const old = localStorage.getItem('c3x_orc_geral_v1');
+    if (old) localStorage.setItem('c3x_orc_geral_2026', old);
+  }
+  if (!localStorage.getItem('c3x_orcamento_2026')) {
+    const old = localStorage.getItem('c3x_orcamento_v1');
+    if (old) localStorage.setItem('c3x_orcamento_2026', old);
+  }
+}
+
 function carregarOrcGeral() {
   const s = localStorage.getItem(_orcGeralKey());
   return s ? JSON.parse(s) : {};
 }
 
 async function sincronizarOrcDeKV() {
+  _migrarLocalStorageOrc();
+
   try {
     const r = await fetch(`/api/kv?key=orc_geral_${ANO_FILTRO}`);
     if (!r.ok) return;
@@ -3832,6 +3845,19 @@ async function sincronizarOrcDeKV() {
     if (value && typeof value === 'object' && Object.keys(value).length > 0) {
       localStorage.setItem(_orcGeralKey(), JSON.stringify(value));
     } else {
+      // fallback: tenta chave legada do KV (migração)
+      if (ANO_FILTRO === 2026) {
+        try {
+          const rLeg = await fetch('/api/kv?key=orc_geral');
+          if (rLeg.ok) {
+            const { value: vLeg } = await rLeg.json();
+            if (vLeg && typeof vLeg === 'object' && Object.keys(vLeg).length > 0) {
+              localStorage.setItem(_orcGeralKey(), JSON.stringify(vLeg));
+              await orcGeralParaKV(vLeg);
+            }
+          }
+        } catch(e) { console.warn('[KV] migração orc_geral legado:', e.message); }
+      }
       const local = localStorage.getItem(_orcGeralKey());
       if (local) await orcGeralParaKV(JSON.parse(local));
     }
@@ -3879,6 +3905,19 @@ async function sincronizarOrcDeKV() {
       if (value && typeof value === 'object' && Object.keys(value).length > 0) {
         localStorage.setItem(_orcCCKey(), JSON.stringify(value));
       } else {
+        // fallback: tenta chave legada do KV (migração)
+        if (ANO_FILTRO === 2026) {
+          try {
+            const rLeg = await fetch('/api/kv?key=orcamento_cc');
+            if (rLeg.ok) {
+              const { value: vLeg } = await rLeg.json();
+              if (vLeg && typeof vLeg === 'object' && Object.keys(vLeg).length > 0) {
+                localStorage.setItem(_orcCCKey(), JSON.stringify(vLeg));
+                await orcamentoParaKV(vLeg);
+              }
+            }
+          } catch(e) { console.warn('[KV] migração orcamento_cc legado:', e.message); }
+        }
         const local = localStorage.getItem(_orcCCKey());
         if (local) await orcamentoParaKV(JSON.parse(local));
       }
