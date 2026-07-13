@@ -8,6 +8,6 @@
     "api/scrape.js": { "maxDuration": 60 }
   },
   "crons": [
-    { "path": "/api/scrape", "schedule": "0 10,16 * * *" }
+    { "path": "/api/scrape", "schedule": "0 10 * * *" }
   ]
 }
