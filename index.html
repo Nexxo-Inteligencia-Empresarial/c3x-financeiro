@@ -2128,6 +2128,20 @@ function fluxoAgregarDados(semanas, cc) {
     s.saldo_acum = acum;
   }
 
+  // Saldo acumulado previsto: mesma ancoragem real, mas inclui lançamentos previstos
+  let acumPrev = anchorData[from + 1] ?? 0;
+  let lastAnchoredMesPrev = from;
+  for (const s of semanas) {
+    const sMesPrev = s.start.getMonth();
+    if (sMesPrev !== lastAnchoredMesPrev) {
+      const ancora = anchorData[sMesPrev + 1];
+      if (ancora != null) { acumPrev = ancora; }
+      lastAnchoredMesPrev = sMesPrev;
+    }
+    acumPrev += (s.entradas_real + s.entradas_prev) - (s.saidas_real + s.saidas_prev);
+    s.saldo_acum_prev = acumPrev;
+  }
+
   return semanas;
 }
 
@@ -2142,6 +2156,7 @@ function fluxoRenderTabela(semanas) {
       <th style="text-align:right;font-size:11px;font-weight:600;color:#6b7280;padding:10px 16px;border-bottom:1px solid var(--border);background:#f9fafb;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap">Saídas Prev.</th>
       <th style="text-align:right;font-size:11px;font-weight:600;color:var(--text2);padding:10px 16px;border-bottom:1px solid var(--border);background:#f9fafb;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap">Saldo Semana</th>
       <th style="text-align:right;font-size:11px;font-weight:600;color:var(--blue);padding:10px 16px;border-bottom:1px solid var(--border);background:#f9fafb;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap">Saldo Acum.</th>
+      <th style="text-align:right;font-size:11px;font-weight:600;color:#6b7280;padding:10px 16px;border-bottom:1px solid var(--border);background:#f9fafb;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;font-style:italic">Acum. Prev.</th>
       <th style="text-align:right;font-size:11px;font-weight:600;color:var(--text2);padding:10px 16px;border-bottom:1px solid var(--border);background:#f9fafb;white-space:nowrap"></th>
     </tr></thead>
     <tbody>`;
@@ -2168,6 +2183,7 @@ function fluxoRenderTabela(semanas) {
       <td style="text-align:right;padding:12px 16px;border-bottom:1px solid var(--border);color:#6b7280;font-style:italic">${s.saidas_prev > 0 ? fmtK(s.saidas_prev) : '<span style="color:#d1d5db">—</span>'}</td>
       <td style="text-align:right;padding:12px 16px;border-bottom:1px solid var(--border);font-weight:700;color:${saldo>=0?'var(--green)':'var(--red)'}">${fmtK(saldo)}</td>
       <td style="text-align:right;padding:12px 16px;border-bottom:1px solid var(--border);font-weight:700;color:${s.saldo_acum>=0?'var(--blue)':'var(--red)'}">${fmtK(s.saldo_acum)}</td>
+      <td style="text-align:right;padding:12px 16px;border-bottom:1px solid var(--border);color:#6b7280;font-style:italic">${fmtK(s.saldo_acum_prev)}</td>
       <td style="text-align:right;padding:12px 16px;border-bottom:1px solid var(--border);color:var(--text2);font-size:11px;white-space:nowrap">${isExp?'▲':'▼'} ${s.lancamentos.length} lanç.</td>
     </tr>`;
 
@@ -2190,7 +2206,7 @@ function fluxoRenderTabela(semanas) {
         </tr>`;
       }).join('');
 
-      html += `<tr class="fluxo-drill-row"><td colspan="8">
+      html += `<tr class="fluxo-drill-row"><td colspan="9">
         <div class="fluxo-drill-inner">
           <table class="fluxo-drill-table">
             <thead><tr>
@@ -2210,6 +2226,7 @@ function fluxoRenderTabela(semanas) {
   const totSaiP = semanas.reduce((s, w) => s + w.saidas_prev, 0);
   const totSaldoR = totEntR - totSaiR;
   const saldoFinal = semanas.length ? semanas[semanas.length - 1].saldo_acum : 0;
+  const saldoPrevFinal = semanas.length ? semanas[semanas.length - 1].saldo_acum_prev : 0;
 
   html += `</tbody>
     <tfoot><tr class="fluxo-tfoot">
@@ -2220,6 +2237,7 @@ function fluxoRenderTabela(semanas) {
       <td style="text-align:right;color:#fca5a5;opacity:.7">${fmtK(totSaiP)}</td>
       <td style="text-align:right;color:${totSaldoR>=0?'#a7f3d0':'#fca5a5'}">${fmtK(totSaldoR)}</td>
       <td style="text-align:right;color:${saldoFinal>=0?'#93c5fd':'#fca5a5'}">${fmtK(saldoFinal)}</td>
+      <td style="text-align:right;color:#9ca3af;font-style:italic">${fmtK(saldoPrevFinal)}</td>
       <td></td>
     </tr></tfoot>
   </table>`;
