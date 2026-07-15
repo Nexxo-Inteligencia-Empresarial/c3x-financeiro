@@ -848,7 +848,7 @@ tr:hover td { background: #f9fafb; }
       </div>
     </div>
 
-    <!-- Nibo Auto-Atualização (credenciais para o cron) -->
+    <!-- Nibo Auto-Atualização (Bearer Token) -->
     <div class="table-card" style="margin-bottom:1.5rem;max-width:640px">
       <div class="table-header">
         <div>
@@ -856,22 +856,23 @@ tr:hover td { background: #f9fafb; }
             <svg viewBox="0 0 24 24" width="18" height="18" style="fill:var(--green);flex-shrink:0"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
             Auto-Atualização (Cron Diário)
           </div>
-          <div class="table-sub">Conecte sua conta Nibo para atualização automática todo dia às 7h</div>
+          <div class="table-sub">Cole o Bearer token do Nibo para manter a atualização automática às 7h</div>
         </div>
         <div id="integ-cron-badge" style="font-size:12px;font-weight:600;padding:4px 10px;border-radius:20px;background:#fef3c7;color:#d97706">● Aguardando</div>
       </div>
       <div style="padding:1.25rem">
-        <p id="integ-cron-status" style="font-size:13px;color:var(--text2);margin:0 0 14px">Informe seu login do Nibo para ativar a atualização automática diária.</p>
-        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
-          <input id="nibo-login-email" type="email" placeholder="E-mail do Nibo" autocomplete="off"
-            style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;width:100%;box-sizing:border-box">
-          <input id="nibo-login-pass" type="password" placeholder="Senha do Nibo" autocomplete="off"
-            style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;width:100%;box-sizing:border-box">
+        <p id="integ-cron-status" style="font-size:13px;color:var(--text2);margin:0 0 14px">Cole o Bearer token copiado do DevTools do Nibo para ativar a atualização automática.</p>
+        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#92400e;line-height:1.5">
+          <b>Como obter o token:</b> Abra o Nibo no Chrome → F12 → Rede → filtre por <code style="background:#fef3c7;padding:1px 4px;border-radius:3px">api-empresa</code> → clique em qualquer requisição → Cabeçalhos → copie o valor de <code style="background:#fef3c7;padding:1px 4px;border-radius:3px">authorization</code> (sem a palavra "Bearer")
+        </div>
+        <div style="margin-bottom:12px">
+          <textarea id="nibo-bearer-input" placeholder="Cole aqui o token (começa com eyJ...)" autocomplete="off" rows="3"
+            style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:11px;font-family:monospace;width:100%;box-sizing:border-box;resize:vertical;line-height:1.4"></textarea>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
-          <button onclick="integConectarNibo()"
+          <button onclick="integSalvarBearerToken()"
             style="padding:9px 20px;background:var(--green);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">
-            Conectar Nibo
+            Salvar Token
           </button>
           <button onclick="integTestarCron()"
             style="padding:9px 16px;background:var(--bg2);color:var(--text1);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">
@@ -3496,30 +3497,45 @@ function integAtualizarBadges() {
   integCheckCronStatus();
 }
 
-async function integConectarNibo() {
-  const email = document.getElementById('nibo-login-email').value.trim();
-  const pass  = document.getElementById('nibo-login-pass').value;
+async function integSalvarBearerToken() {
+  const raw   = document.getElementById('nibo-bearer-input').value.trim();
+  const token = raw.startsWith('Bearer ') ? raw.slice(7).trim() : raw;
   const msgEl = document.getElementById('integ-cron-msg');
-  if (!email || !pass) { msgEl.style.color='var(--red)'; msgEl.textContent='Preencha e-mail e senha.'; return; }
-  msgEl.style.color='var(--text2)'; msgEl.textContent='Conectando…';
+  if (!token || !token.startsWith('eyJ')) {
+    msgEl.style.color='var(--red)';
+    msgEl.textContent='Token inválido. Cole o valor completo do campo authorization (começa com eyJ…).';
+    return;
+  }
+  let exp = null;
   try {
-    const r = await fetch('/api/nibo-login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password: pass })
-    });
-    const d = await r.json();
-    if (!r.ok || !d.ok) {
-      msgEl.style.color='var(--red)'; msgEl.textContent='Erro: ' + (d.error || 'falha ao autenticar');
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    exp = payload.exp ? new Date(payload.exp * 1000) : null;
+    if (exp && exp < new Date()) {
+      msgEl.style.color='var(--red)';
+      msgEl.textContent='Este token já expirou em ' + exp.toLocaleString('pt-BR') + '. Copie um token mais recente do Nibo.';
       return;
     }
-    document.getElementById('nibo-login-email').value = '';
-    document.getElementById('nibo-login-pass').value = '';
-    msgEl.style.color='var(--green)'; msgEl.textContent='✓ Conectado! Cron ativo — atualiza todo dia às 7h.';
-    document.getElementById('integ-cron-badge').style.background='#dcfce7';
-    document.getElementById('integ-cron-badge').style.color='#16a34a';
-    document.getElementById('integ-cron-badge').textContent='● Ativo';
-    document.getElementById('integ-cron-status').textContent='Autenticação salva. Atualização automática diária às 7h (Brasília).';
+  } catch(e) {}
+  msgEl.style.color='var(--text2)'; msgEl.textContent='Salvando…';
+  try {
+    const r = await fetch('/api/kv?key=nibo_auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-nibo-token': 'c3x-scraper-2026' },
+      body: JSON.stringify({ token, refreshToken: null, savedAt: new Date().toISOString() })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      document.getElementById('nibo-bearer-input').value = '';
+      const expStr = exp ? exp.toLocaleString('pt-BR') : 'desconhecido';
+      msgEl.style.color='var(--green)';
+      msgEl.textContent='✓ Token salvo! Válido até ' + expStr + '. Cron ativo às 7h.';
+      document.getElementById('integ-cron-badge').style.background='#dcfce7';
+      document.getElementById('integ-cron-badge').style.color='#16a34a';
+      document.getElementById('integ-cron-badge').textContent='● Ativo';
+      document.getElementById('integ-cron-status').textContent='Token ativo. Atualização automática diária às 7h (Brasília).';
+    } else {
+      msgEl.style.color='var(--red)'; msgEl.textContent='Erro ao salvar no KV. Tente novamente.';
+    }
   } catch(e) {
     msgEl.style.color='var(--red)'; msgEl.textContent='Erro de rede: ' + e.message;
   }
@@ -3553,12 +3569,28 @@ async function integCheckCronStatus() {
     const status = document.getElementById('integ-cron-status');
     if (!badge || !status) return;
     if (value && value.token) {
-      const d = value.savedAt ? new Date(value.savedAt).toLocaleString('pt-BR') : '?';
-      badge.style.background='#dcfce7'; badge.style.color='#16a34a'; badge.textContent='● Ativo';
-      status.textContent=`Token salvo em ${d}. Atualização automática diária às 7h.`;
+      let expInfo = '';
+      try {
+        const payload = JSON.parse(atob(value.token.split('.')[1]));
+        if (payload.exp) {
+          const exp = new Date(payload.exp * 1000);
+          const expired = exp < new Date();
+          expInfo = expired
+            ? ` — ⚠️ expirou em ${exp.toLocaleString('pt-BR')} (renove o token)`
+            : ` — válido até ${exp.toLocaleString('pt-BR')}`;
+          if (expired) {
+            badge.style.background='#fef3c7'; badge.style.color='#d97706'; badge.textContent='● Expirado';
+          } else {
+            badge.style.background='#dcfce7'; badge.style.color='#16a34a'; badge.textContent='● Ativo';
+          }
+        }
+      } catch(e) {
+        badge.style.background='#dcfce7'; badge.style.color='#16a34a'; badge.textContent='● Ativo';
+      }
+      status.textContent=`Token ativo${expInfo}. Cron roda todo dia às 7h (Brasília).`;
     } else {
       badge.style.background='#fef3c7'; badge.style.color='#d97706'; badge.textContent='● Aguardando';
-      status.textContent='Informe seu login do Nibo para ativar a atualização automática diária.';
+      status.textContent='Cole o Bearer token do Nibo para ativar a atualização automática diária.';
     }
   } catch(e) {}
 }
