@@ -2950,6 +2950,8 @@ async function carregarCentrosCusto(creditData, debitData) {
   // Usa mesma lógica de data que _dataCaixa: paymentDate > dueDate > scheduleDate
   // Inadimplência: isPaid=false + dueDate no passado
   const hoje = new Date();
+  // parseLocal: evita shift UTC (new Date("2026-07-15T00:00:00Z") em UTC-3 vira 14/07 às 21h)
+  const parseLocal = s => { const [y,m,d] = s.slice(0,10).split('-').map(Number); return new Date(y, m-1, d); };
   CC_INADIM = {};
   INADIM_ITENS = [];
 
@@ -2961,7 +2963,7 @@ async function carregarCentrosCusto(creditData, debitData) {
     // Scraper salva projetos como value=openValue_original, openValue=0 para evitar
     // duplicação no fluxo de caixa. Para inadimplência, o valor em aberto é openV || v.
     const inadimV = !item.isPaid ? (openV > 0 ? openV : v) : 0;
-    const dueDate = item.dueDate ? new Date(item.dueDate) : null;
+    const dueDate = item.dueDate ? parseLocal(item.dueDate) : null;
 
     for (const cc of ccs) {
       const nome = cc.costCenterDescription || cc.description || cc.name || 'Outros';
