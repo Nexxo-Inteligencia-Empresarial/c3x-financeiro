@@ -2949,9 +2949,10 @@ async function carregarCentrosCusto(creditData, debitData) {
   // Receitas por CC — REGIME DE CAIXA: apenas isPaid=true ou isEntry=true
   // Usa mesma lógica de data que _dataCaixa: paymentDate > dueDate > scheduleDate
   // Inadimplência: isPaid=false + dueDate no passado
-  const hoje = new Date();
   // parseLocal: evita shift UTC (new Date("2026-07-15T00:00:00Z") em UTC-3 vira 14/07 às 21h)
   const parseLocal = s => { const [y,m,d] = s.slice(0,10).split('-').map(Number); return new Date(y, m-1, d); };
+  // Normaliza hoje para meia-noite: itens com vencimento = hoje não entram como inadimplentes
+  const _h = new Date(); const hoje = new Date(_h.getFullYear(), _h.getMonth(), _h.getDate());
   CC_INADIM = {};
   INADIM_ITENS = [];
 
