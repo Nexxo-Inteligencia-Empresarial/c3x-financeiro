@@ -433,6 +433,10 @@ tr:hover td { background: #f9fafb; }
       </div>
     </div>
     <div class="topbar-right">
+      <button class="refresh-btn" id="btn-atualizar" onclick="atualizarDados()" title="Buscar dados atualizados do Nibo">
+        <svg viewBox="0 0 24 24"><path d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+        Atualizar
+      </button>
       <span class="topbar-updated" id="topbar-updated">—</span>
     </div>
   </div>
@@ -1087,6 +1091,24 @@ const barOpts = (yFmt) => ({
 /* ═══════════════════════════════════════════
    CARREGAR DADOS DO KV (scraped Nibo)
 ═══════════════════════════════════════════ */
+
+async function atualizarDados() {
+  const btn = document.getElementById('btn-atualizar');
+  const svgPath = 'M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z';
+  btn.disabled = true;
+  btn.innerHTML = `<svg viewBox="0 0 24 24" style="animation:spin 1s linear infinite"><path d="${svgPath}"/></svg> Atualizando...`;
+  try {
+    const r = await fetch('/api/scrape', { headers: { 'x-nibo-token': 'c3x-scraper-2026' } });
+    const d = await r.json();
+    if (!r.ok || !d.ok) throw new Error(d.error || 'falha no scrape');
+    await carregarDadosKV();
+  } catch(e) {
+    alert('Erro ao atualizar: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `<svg viewBox="0 0 24 24"><path d="${svgPath}"/></svg> Atualizar`;
+  }
+}
 
 async function carregarDadosKV() {
   const loaderEl = document.getElementById('loader-label');
