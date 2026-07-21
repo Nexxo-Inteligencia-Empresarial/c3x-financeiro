@@ -28,19 +28,46 @@ function isExpired(token) {
   } catch { return true; }
 }
 
-async function refreshToken(refreshToken) {
+const NIBO_AUTH_HEADERS = {
+  'Content-Type': 'application/x-www-form-urlencoded',
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
+  'Origin': 'https://empresa.nibo.com.br',
+  'Referer': 'https://empresa.nibo.com.br/',
+};
+
+async function refreshToken(rt) {
   const r = await fetch('https://auth.nibo.com.br/connect/token', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    headers: NIBO_AUTH_HEADERS,
     body: new URLSearchParams({
       grant_type: 'refresh_token',
-      refresh_token: refreshToken,
-      client_id: 'empresa-web'
+      refresh_token: rt,
+      client_id: 'empresa-web',
+      scope: 'openid empresa-api offline_access',
     }).toString()
   });
   if (!r.ok) {
     const txt = await r.text().catch(() => '');
-    throw new Error(`Refresh falhou ${r.status}: ${txt.slice(0, 120)}`);
+    throw new Error(`Refresh falhou ${r.status}: ${txt.slice(0, 200)}`);
+  }
+  return r.json();
+}
+
+async function loginWithPassword(email, password) {
+  const r = await fetch('https://auth.nibo.com.br/connect/token', {
+    method: 'POST',
+    headers: NIBO_AUTH_HEADERS,
+    body: new URLSearchParams({
+      grant_type: 'password',
+      username: email,
+      password,
+      client_id: 'empresa-web',
+      scope: 'openid empresa-api offline_access',
+    }).toString()
+  });
+  if (!r.ok) {
+    const txt = await r.text().catch(() => '');
+    throw new Error(`Login falhou ${r.status}: ${txt.slice(0, 200)}`);
   }
   return r.json();
 }
@@ -158,10 +185,27 @@ module.exports = async function handler(req, res) {
     let token = niboAuth.token;
 
     if (isExpired(token)) {
-      if (!niboAuth.refreshToken) {
-        return res.status(401).json({ error: 'token expirado e sem refresh token — abra o dashboard' });
+      let refreshed = null;
+
+      // Tentativa 1: refresh token
+      if (niboAuth.refreshToken) {
+        try {
+          refreshed = await refreshToken(niboAuth.refreshToken);
+        } catch (e) {
+          console.warn('[scrape] refresh_token falhou, tentando password grant:', e.message);
+        }
       }
-      const refreshed = await refreshToken(niboAuth.refreshToken);
+
+      // Tentativa 2: password grant (NIBO_EMAIL + NIBO_PASSWORD nas env vars)
+      if (!refreshed) {
+        const email = process.env.NIBO_EMAIL;
+        const password = process.env.NIBO_PASSWORD;
+        if (!email || !password) {
+          return res.status(401).json({ error: 'token expirado, refresh falhou e NIBO_EMAIL/NIBO_PASSWORD não configurados' });
+        }
+        refreshed = await loginWithPassword(email, password);
+      }
+
       token = refreshed.access_token;
       await kvSet('nibo_auth', {
         token,
