@@ -1,4 +1,8 @@
 'use strict';
+// Permite certificados SSL corporativos (proxy de inspeção SSL)
+// Necessário em redes com Zscaler, Netskope ou similar
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
 // C3X Financeiro — Scraper local
 // Roda na sua máquina (sem bloqueio de IP do Nibo) para:
 //   1. Autenticar no Nibo localmente (auth.nibo.com.br não bloqueia sua máquina)
@@ -55,10 +59,10 @@ async function loginNibo() {
     }).toString(),
   });
 
+  const txt = await r.text();
   let data;
-  try { data = await r.json(); } catch {
-    const txt = await r.text().catch(() => '');
-    throw new Error(`Resposta inválida do Nibo (${r.status}): ${txt.slice(0, 200)}`);
+  try { data = JSON.parse(txt); } catch {
+    throw new Error(`Resposta não-JSON do Nibo (${r.status}): ${txt.slice(0, 400)}`);
   }
 
   if (!r.ok || !data.access_token) {

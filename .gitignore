@@ -1,3 +1,5 @@
 .vercel
 scripts/.env.local
 scripts/scrape.log
+scripts/node_modules/
+scripts/package-lock.json
