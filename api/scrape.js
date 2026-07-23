@@ -178,7 +178,8 @@ module.exports = async function handler(req, res) {
     const niboAuth = await kvGet('nibo_auth', kvUrl, kvToken);
     if (!niboAuth?.token) {
       return res.status(401).json({
-        error: 'nibo_auth ausente no KV — abra o dashboard para salvar o token automaticamente'
+        error: 'TOKEN_AUSENTE',
+        message: 'nibo_auth não encontrado no KV. Execute: scripts\\run-scrape.bat'
       });
     }
 
@@ -192,18 +193,29 @@ module.exports = async function handler(req, res) {
         try {
           refreshed = await refreshToken(niboAuth.refreshToken);
         } catch (e) {
-          console.warn('[scrape] refresh_token falhou, tentando password grant:', e.message);
+          console.warn('[scrape] refresh_token falhou:', e.message);
         }
       }
 
       // Tentativa 2: password grant (NIBO_EMAIL + NIBO_PASSWORD nas env vars)
+      // Nota: auth.nibo.com.br pode bloquear IPs de datacenter — se falhar, use scripts/run-scrape.bat
       if (!refreshed) {
         const email = process.env.NIBO_EMAIL;
         const password = process.env.NIBO_PASSWORD;
-        if (!email || !password) {
-          return res.status(401).json({ error: 'token expirado, refresh falhou e NIBO_EMAIL/NIBO_PASSWORD não configurados' });
+        if (email && password) {
+          try {
+            refreshed = await loginWithPassword(email, password);
+          } catch (e) {
+            console.warn('[scrape] password grant falhou (IP bloqueado?):', e.message);
+          }
         }
-        refreshed = await loginWithPassword(email, password);
+      }
+
+      if (!refreshed) {
+        return res.status(401).json({
+          error: 'TOKEN_EXPIRADO',
+          message: 'Token Nibo expirado e renovação automática falhou (auth.nibo.com.br bloqueia Vercel). Execute: scripts\\run-scrape.bat'
+        });
       }
 
       token = refreshed.access_token;

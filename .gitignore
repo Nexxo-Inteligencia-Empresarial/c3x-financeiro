@@ -1,1 +1,3 @@
 .vercel
+scripts/.env.local
+scripts/scrape.log

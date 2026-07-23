@@ -1100,10 +1100,17 @@ async function atualizarDados() {
   try {
     const r = await fetch('/api/scrape', { headers: { 'x-nibo-token': 'c3x-scraper-2026' } });
     const d = await r.json();
-    if (!r.ok || !d.ok) throw new Error(d.error || 'falha no scrape');
+    if (!r.ok) {
+      if (d.error === 'TOKEN_EXPIRADO' || d.error === 'TOKEN_AUSENTE') {
+        alert('Token Nibo expirado ou ausente.\n\nPara atualizar os dados:\n\n1. Execute scripts\\run-scrape.bat (recomendado)\n   OU\n2. Va em Integrações > Auto-Atualização e cole um token fresco do Nibo.');
+      } else {
+        alert('Erro ao atualizar: ' + (d.message || d.error || r.status));
+      }
+      return;
+    }
     await carregarDadosKV();
   } catch(e) {
-    alert('Erro ao atualizar: ' + e.message);
+    alert('Erro de rede ao atualizar: ' + e.message);
   } finally {
     btn.disabled = false;
     btn.innerHTML = `<svg viewBox="0 0 24 24"><path d="${svgPath}"/></svg> Atualizar`;
